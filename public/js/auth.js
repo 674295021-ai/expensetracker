@@ -70,6 +70,9 @@ const Auth = {
       ? clientId
       : fallbackClientId;
 
+    // Store for reuse in promptGoogleSignIn()
+    this.googleClientId = effectiveClientId;
+
     const tryRender = (attemptsLeft) => {
       if (window.google && window.google.accounts && window.google.accounts.id) {
         try {
@@ -118,8 +121,42 @@ const Auth = {
   },
 
   promptGoogleSignIn() {
+    const btnContainer = document.getElementById('google-signin-btn');
     if (window.google && window.google.accounts && window.google.accounts.id) {
-      window.google.accounts.id.prompt();
+      try {
+        // Re-initialize to ensure callback is always registered
+        window.google.accounts.id.initialize({
+          client_id: this.googleClientId || '1783870800-utd8akhi4g29rghol1n62lr9t48sseru.apps.googleusercontent.com',
+          callback: (response) => this.handleGoogleCredentialResponse(response),
+          auto_select: false,
+          cancel_on_tap_outside: true,
+        });
+
+        // Try One Tap first; if suppressed — re-render the official iframe button
+        window.google.accounts.id.prompt((notification) => {
+          if (
+            notification.isNotDisplayed() ||
+            notification.isSkippedMoment() ||
+            notification.getDismissedReason() === 'credential_returned'
+          ) {
+            if (btnContainer) {
+              btnContainer.innerHTML = '';
+              window.google.accounts.id.renderButton(btnContainer, {
+                theme: 'outline',
+                size: 'large',
+                type: 'standard',
+                shape: 'pill',
+                text: 'signin_with',
+                logo_alignment: 'left',
+                width: 280,
+              });
+            }
+          }
+        });
+      } catch (e) {
+        console.error('Google Sign-in error:', e);
+        API.showToast('ไม่สามารถเปิด Google Login ได้ กรุณารีเฟรชหน้า', 'error');
+      }
     } else {
       API.showToast('กำลังโหลด Google Sign-in กรุณารอสักครู่แล้วกดอีกครั้ง', 'info');
     }
