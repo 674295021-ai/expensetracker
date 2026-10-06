@@ -4,6 +4,7 @@ import { InvestmentPortfolioSummary } from '../db/investments';
 
 export interface SlipOCRResult {
   is_slip: boolean;
+  slip_type?: 'transfer' | 'dime';
   amount?: number;
   type?: 'expense' | 'income';
   category?: string;
@@ -14,6 +15,12 @@ export interface SlipOCRResult {
   bank?: string;
   note?: string;
   raw_text?: string;
+  // Dime! specific investment fields:
+  asset_name?: string;
+  ticker?: string;
+  shares?: number;
+  price_per_share?: number;
+  currency?: string;
 }
 
 const DEFAULT_CANDIDATE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
@@ -200,32 +207,49 @@ export async function parseSlipWithGeminiVision(
   mimeType: string = 'image/jpeg'
 ): Promise<SlipOCRResult> {
   const prompt = `
-คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปการโอนเงินธนาคารไทย (Bank Transfer Slip Scanner)
-โปรดอ่านรูปภาพสลิปนี้และสกัดข้อมูลออกมาเป็น JSON เท่านั้น (Strict JSON Output):
+คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปทางการเงินไทยอัจฉริยะ (Thai Financial Slip & Dime Investment Scanner)
+โปรดอ่านรูปภาพนี้อย่างละเอียด และจำแนกว่าเป็น:
+1) "transfer" = สลิปโอนเงินธนาคารทั่วไป (เช่น KBank, SCB, Krungthai, BBL, TTB, GSB, TrueMoney, PromptPay ฯลฯ)
+2) "dime" = สลิปหรือหลักฐานการซื้อขายหุ้น/กองทุน/สินทรัพย์จากแอป Dime! (KKP / Dime)
 
 กติกาการสกัดข้อมูล:
-1. ตรวจสอบว่ารูปนี้คือสลิปโอนเงิน/ใบเสร็จทางการเงินหรือไม่ (is_slip: true/false)
-2. สกัดจำนวนเงินโอน (amount เป็นตัวเลขทศนิยม เช่น 350.00)
-3. ระบุประเภท (type: "expense" สำหรับโอนเงินออก, "income" สำหรับเงินโอนเข้า)
-4. สกัดหมวดหมู่ที่เหมาะสมที่สุด (category) จากรายการนี้:
-   - "อาหารและเครื่องดื่ม"
-   - "การเดินทาง/น้ำมัน"
-   - "ช้อปปิ้ง/ของใช้"
-   - "ค่าที่พัก/สาธารณูปโภค"
-   - "บันเทิง/สังสรรค์"
-   - "สุขภาพ/รักษาพยาบาล"
-   - "เงินออม/เงินลงทุน"
-   - "รายจ่ายอื่นๆ"
-5. วันที่ทำรายการ (date ในรูปแบบ YYYY-MM-DD เช่น 2026-10-06 หากไม่ระบุปี ให้ใช้ปีปัจจุบัน 2026)
-6. เวลาทำรายการ (time ในรูปแบบ HH:mm)
-7. ชื่อผู้รับเงิน/ร้านค้า/บัญชีปลายทาง (recipient)
-8. ชื่อผู้โอน/บัญชีต้นทาง (sender)
-9. ธนาคารผู้ให้บริการ เช่น KBank, SCB, KTB, BBL, TTB, GSB, PromptPay (bank)
-10. หมายเหตุ/ข้อความช่วยจำถ้ามี (note)
+1. ตรวจสอบว่ารูปนี้คือสลิปโอนเงินหรือสลิปการลงทุนหรือไม่ (is_slip: true/false)
+2. จำแนกประเภทสลิป (slip_type: "transfer" หรือ "dime")
 
-ตอบกลับเป็น JSON เท่านั้นในรูปแบบนี้:
+--- กรณีที่ 1: สลิปโอนเงินทั่วไป (slip_type = "transfer") ---
+- amount: ยอดเงินโอน (ตัวเลขทศนิยม เช่น 350.00)
+- type: "expense" สำหรับโอนเงินออก, "income" สำหรับเงินโอนเข้า
+- category: สกัดหมวดหมู่ที่เหมาะสมที่สุด:
+  - "อาหารและเครื่องดื่ม"
+  - "การเดินทาง/น้ำมัน"
+  - "ช้อปปิ้ง/ของใช้"
+  - "ค่าที่พัก/สาธารณูปโภค"
+  - "บันเทิง/สังสรรค์"
+  - "สุขภาพ/รักษาพยาบาล"
+  - "เงินออม/เงินลงทุน"
+  - "รายจ่ายอื่นๆ"
+- date: วันที่ทำรายการ (YYYY-MM-DD เช่น 2026-10-06 หากไม่ระบุปี ให้ใช้ปี 2026)
+- time: เวลาทำรายการ (HH:mm)
+- recipient: ชื่อผู้รับเงิน/ร้านค้า/บัญชีปลายทาง
+- sender: ชื่อผู้โอน/บัญชีต้นทาง
+- bank: ธนาคาร เช่น KBank, SCB, KTB, BBL, TTB, GSB, PromptPay
+- note: หมายเหตุ/ข้อความช่วยจำถ้ามี
+
+--- กรณีที่ 2: สลิปการลงทุน Dime! (slip_type = "dime") ---
+- ticker: สัญลักษณ์หุ้นหรือชื่อย่อสินทรัพย์ เช่น "AAPL", "NVDA", "TSLA", "DIME-US500", "TLG"
+- asset_name: ชื่อเต็มของหุ้นหรือสินทรัพย์
+- shares: จำนวนหุ้น/หน่วยที่ซื้อ (ตัวเลขทศนิยม เช่น 0.25 หรือ 10)
+- price_per_share: ราคาต่อหุ้นหรือราคาเฉลี่ยที่ซื้อ (ตัวเลขทศนิยม)
+- amount: ยอดเงินรวมที่ลงทุน (ตัวเลขทศนิยม)
+- date: วันที่ทำรายการ (YYYY-MM-DD)
+- time: เวลาทำรายการ (HH:mm)
+- note: รายละเอียดเพิ่มเติม เช่น "ซื้อสำเร็จผ่าน Dime!"
+
+ตอบกลับเป็น JSON เท่านั้น (Strict JSON Output):
+ตัวอย่างกรณีสลิปทั่วไป:
 {
   "is_slip": true,
+  "slip_type": "transfer",
   "amount": 150.00,
   "type": "expense",
   "category": "อาหารและเครื่องดื่ม",
@@ -235,6 +259,20 @@ export async function parseSlipWithGeminiVision(
   "sender": "นายสมชาย",
   "bank": "KBank",
   "note": "ค่าอาหารกลางวัน"
+}
+
+ตัวอย่างกรณีสลิป Dime!:
+{
+  "is_slip": true,
+  "slip_type": "dime",
+  "ticker": "AAPL",
+  "asset_name": "Apple Inc. (AAPL)",
+  "shares": 0.5,
+  "price_per_share": 7800.00,
+  "amount": 3900.00,
+  "date": "2026-10-06",
+  "time": "21:30",
+  "note": "ซื้อสำเร็จผ่าน Dime!"
 }
 `;
 

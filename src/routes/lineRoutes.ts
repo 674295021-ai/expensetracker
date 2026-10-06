@@ -17,7 +17,26 @@ import {
   getLineUserByUserId,
   unlinkLineUser,
 } from '../db/line';
-import { createTransaction, getUserSummary } from '../db/transactions';
+import { createTransaction, getUserSummary, getMonthlyExpense } from '../db/transactions';
+import { upsertDimeInvestment } from '../db/investments';
+
+// Helper to format date in Thai format: "06 ต.ค. 2569"
+function formatThaiDate(dateStr?: string): string {
+  try {
+    const d = dateStr ? new Date(dateStr) : new Date();
+    if (isNaN(d.getTime())) return dateStr || '';
+    const months = [
+      'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+      'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+    ];
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = months[d.getMonth()];
+    const thaiYear = d.getFullYear() + 543;
+    return `${day} ${month} ${thaiYear}`;
+  } catch {
+    return dateStr || '';
+  }
+}
 
 export async function handleLineRoutes(
   request: Request,
@@ -113,47 +132,86 @@ export async function handleLineRoutes(
           const slipResult = await parseSlipWithGeminiVision(gApiKey, base64, mimeType);
 
           if (slipResult.is_slip && slipResult.amount && slipResult.amount > 0) {
-            const txType = slipResult.type === 'income' ? 'income' : 'expense';
-            const txCategory = slipResult.category || (txType === 'income' ? 'รายรับอื่นๆ' : 'อาหารและเครื่องดื่ม');
+            const isDime = slipResult.slip_type === 'dime' || /dime/i.test(slipResult.bank || slipResult.note || '');
             const txDate = slipResult.date || new Date().toISOString().split('T')[0];
+            const thaiDateText = formatThaiDate(txDate);
 
-            let note = slipResult.note || '';
-            if (slipResult.recipient) note += ` (ผู้รับ: ${slipResult.recipient})`;
-            if (slipResult.bank) note += ` [${slipResult.bank}]`;
+            if (isDime) {
+              // --- กรณีสลิป Dime! (การลงทุน/หุ้น/กองทุน) ---
+              const ticker = slipResult.ticker || slipResult.asset_name || 'US Stock';
+              const sharesText = slipResult.shares ? `${slipResult.shares}` : '-';
+              const priceText = slipResult.price_per_share ? slipResult.price_per_share.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
+              const totalAmount = slipResult.amount;
 
-            // Insert into D1 transactions
-            await createTransaction(env.DB, linkedUser.user_id, {
-              type: txType,
-              category: txCategory,
-              amount: slipResult.amount,
-              note: note.trim() || null,
-              transaction_date: txDate,
-            });
+              let dimeNote = `Dime! ${ticker}`;
+              if (slipResult.shares && slipResult.price_per_share) {
+                dimeNote += ` (${slipResult.shares} หุ้น @ ${priceText})`;
+              }
 
-            // Get updated summary
-            const summary = await getUserSummary(env.DB, linkedUser.user_id);
+              // 1. บันทึก/อัปเดตลงตาราง investments
+              await upsertDimeInvestment(env.DB, linkedUser.user_id, {
+                name: ticker,
+                shares: slipResult.shares,
+                price: slipResult.price_per_share,
+                amount: totalAmount,
+                note: dimeNote,
+              });
 
-            // Send Flex Message reply
-            const flexMsg = createSlipRecordedFlexMessage({
-              amount: slipResult.amount,
-              type: txType,
-              category: txCategory,
-              date: txDate,
-              time: slipResult.time,
-              recipient: slipResult.recipient,
-              bank: slipResult.bank,
-              netSavings: summary.balance,
-              webUrl,
-            });
+              // 2. บันทึกประวัติธุรกรรมซื้อขายลงตาราง transactions เพื่อติดตามกระแสเงิน
+              await createTransaction(env.DB, linkedUser.user_id, {
+                type: 'expense',
+                category: 'เงินออม/เงินลงทุน',
+                amount: totalAmount,
+                note: dimeNote,
+                transaction_date: txDate,
+              });
 
-            await replyLineMessage(replyToken, [flexMsg], lineToken);
+              // 3. ส่งข้อความตอบกลับสรุปการลงทุน Dime!
+              const dimeReplyText =
+                `📈 บันทึกการลงทุน Dime! สำเร็จ\n` +
+                `🔹 หุ้น/สินทรัพย์: ${ticker}\n` +
+                `🔹 จำนวน: ${sharesText} หุ้น @ ${priceText} บาท\n` +
+                `💵 ยอดรวม: ${totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท\n` +
+                `💼 บันทึกเข้าพอร์ต Investments เรียบร้อยแล้ว`;
+
+              await replyLineMessage(replyToken, [{ type: 'text', text: dimeReplyText }], lineToken);
+            } else {
+              // --- กรณีสลิปโอนเงินทั่วไป ---
+              const txType = slipResult.type === 'income' ? 'income' : 'expense';
+              const txCategory = slipResult.category || (txType === 'income' ? 'รายรับอื่นๆ' : 'อาหารและเครื่องดื่ม');
+
+              let note = slipResult.note || '';
+              if (slipResult.recipient) note += ` (ผู้รับ: ${slipResult.recipient})`;
+              if (slipResult.bank) note += ` [${slipResult.bank}]`;
+
+              // 1. บันทึกลงตาราง transactions
+              await createTransaction(env.DB, linkedUser.user_id, {
+                type: txType,
+                category: txCategory,
+                amount: slipResult.amount,
+                note: note.trim() || null,
+                transaction_date: txDate,
+              });
+
+              // 2. คำนวณยอดรวมรายจ่ายเดือนนี้จาก D1
+              const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
+
+              // 3. ส่งข้อความตอบกลับสรุปตามรูปแบบที่กำหนด
+              const label = txType === 'income' ? 'รายรับ' : 'รายจ่าย';
+              const replyText =
+                `✅ บันทึก${label}สำเร็จ: ${slipResult.amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท\n` +
+                `📅 วันที่: ${thaiDateText}\n` +
+                `📊 สรุปรายจ่ายเดือนนี้: ${currentMonthExpense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`;
+
+              await replyLineMessage(replyToken, [{ type: 'text', text: replyText }], lineToken);
+            }
           } else {
             await replyLineMessage(
               replyToken,
               [
                 {
                   type: 'text',
-                  text: '⚠️ ตรวจสอบรูปภาพแล้วไม่พบข้อมูลสลิปโอนเงินที่ชัดเจน\n\nโปรดตรวจสอบว่าเป็นภาพสลิปธนาคารที่มีตัวเลขยอดเงินชัดเจน แล้วลองส่งใหม่อีกครั้งครับ',
+                  text: '⚠️ ตรวจสอบรูปภาพแล้วไม่พบข้อมูลสลิปโอนเงินหรือสลิป Dime! ที่ชัดเจน\n\nโปรดตรวจสอบว่าเป็นภาพสลิปที่มีตัวเลขยอดเงินชัดเจน แล้วลองส่งใหม่อีกครั้งครับ',
                 },
               ],
               lineToken

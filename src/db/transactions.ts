@@ -344,3 +344,13 @@ export async function getAdminAllTransactions(
   const { results } = await db.prepare(query).bind(limit, offset).all<any>();
   return results || [];
 }
+
+export async function getMonthlyExpense(db: D1Database, userId: string, yearMonth?: string): Promise<number> {
+  const ym = yearMonth || new Date().toISOString().slice(0, 7);
+  const row = await db
+    .prepare("SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE user_id = ? AND type = 'expense' AND substr(transaction_date, 1, 7) = ?")
+    .bind(userId, ym)
+    .first<{ total: number }>();
+  return Math.round((row?.total || 0) * 100) / 100;
+}
+
