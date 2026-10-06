@@ -96,23 +96,20 @@ export async function handleLineRoutes(
 
       if (!message) continue;
 
-      // A. Handling Image Messages (Slip OCR)
-      if (message.type === 'image') {
-        const linkedUser = await getLineUser(env.DB, lineUserId);
+      try {
+        // A. Handling Image Messages (Slip OCR)
+        if (message.type === 'image') {
+          const linkedUser = await getLineUser(env.DB, lineUserId);
 
-        if (!linkedUser) {
-          // User not linked yet
-          await replyLineMessage(
-            replyToken,
-            [createLinkAccountFlexMessage(webUrl)],
-            lineToken
-          );
-          continue;
-        }
-
-        try {
-          // Download slip image from LINE
-          const { base64, mimeType } = await getLineMessageContentBase64(message.id, lineToken);
+          if (!linkedUser) {
+            // User not linked yet
+            await replyLineMessage(
+              replyToken,
+              [createLinkAccountFlexMessage(webUrl)],
+              lineToken
+            );
+            continue;
+          }
 
           if (!gApiKey) {
             await replyLineMessage(
@@ -127,6 +124,9 @@ export async function handleLineRoutes(
             );
             continue;
           }
+
+          // Download slip image from LINE
+          const { base64, mimeType } = await getLineMessageContentBase64(message.id, lineToken);
 
           // OCR with Gemini Vision
           const slipResult = await parseSlipWithGeminiVision(gApiKey, base64, mimeType);
@@ -169,7 +169,7 @@ export async function handleLineRoutes(
               // 3. ส่งข้อความตอบกลับสรุปการลงทุน Dime!
               const dimeReplyText =
                 `📈 บันทึกการลงทุน Dime! สำเร็จ\n` +
-                `🔹 หุ้น/สินทรัพย์: ${ticker}\n` +
+                `🔹 สินทรัพย์: ${ticker}\n` +
                 `🔹 จำนวน: ${sharesText} หุ้น @ ${priceText} บาท\n` +
                 `💵 ยอดรวม: ${totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท\n` +
                 `💼 บันทึกเข้าพอร์ต Investments เรียบร้อยแล้ว`;
@@ -217,107 +217,111 @@ export async function handleLineRoutes(
               lineToken
             );
           }
-        } catch (err: unknown) {
-          console.error('Slip processing error:', err);
-          const errMsg = err instanceof Error ? err.message : String(err);
-          await replyLineMessage(
-            replyToken,
-            [
-              {
-                type: 'text',
-                text: `❌ เกิดข้อผิดพลาดในการประมวลผลสลิป (${errMsg.slice(0, 80)})\n\nกรุณาลองใหม่อีกครั้ง หรือบันทึกรายการด้วยตนเองผ่านหน้าเว็บครับ`,
-              },
-            ],
-            lineToken
-          );
         }
-      }
 
-      // B. Handling Text Messages (Linking and Querying)
-      if (message.type === 'text' && message.text) {
-        const text = message.text.trim();
+        // B. Handling Text Messages (Linking and Querying)
+        if (message.type === 'text' && message.text) {
+          const text = message.text.trim();
 
-        // 1. Account linking command: "LINK 123456" or "เชื่อมต่อ 123456"
-        const linkMatch = text.match(/^(?:link|เชื่อมต่อ)\s+([a-zA-Z0-9]{4,8})$/i);
-        if (linkMatch) {
-          const token = linkMatch[1];
-          const linkResult = await verifyAndLinkLineUser(env.DB, token, lineUserId);
+          // 1. Account linking command: "LINK 123456" or "เชื่อมต่อ 123456"
+          const linkMatch = text.match(/^(?:link|เชื่อมต่อ)\s+([a-zA-Z0-9]{4,8})$/i);
+          if (linkMatch) {
+            const token = linkMatch[1];
+            const linkResult = await verifyAndLinkLineUser(env.DB, token, lineUserId);
 
-          if (linkResult.success) {
-            await replyLineMessage(
-              replyToken,
-              [
-                {
-                  type: 'text',
-                  text: '🎉 เชื่อมต่อบัญชีสำเร็จเรียบร้อยแล้วครับ!\n\nตอนนี้คุณสามารถส่งภาพสลิปโอนเงินเข้ามาในแชตนี้ได้ทันที ระบบจะสแกนและบันทึกลงแดชบอร์ดให้คุณโดยอัตโนมัติ ✨',
-                },
-              ],
-            lineToken
-            );
-          } else {
-            await replyLineMessage(
-              replyToken,
-              [
-                {
-                  type: 'text',
-                  text: `❌ ${linkResult.error || 'รหัสเชื่อมต่อไม่ถูกต้อง'}\n\nกรุณาเข้าสู่ระบบหน้าเว็บและกด "สร้างรหัสเชื่อมต่อ" ใหม่อีกครั้งครับ`,
-                },
-              ],
-            lineToken
-            );
+            if (linkResult.success) {
+              await replyLineMessage(
+                replyToken,
+                [
+                  {
+                    type: 'text',
+                    text: '🎉 เชื่อมต่อบัญชีสำเร็จเรียบร้อยแล้วครับ!\n\nตอนนี้คุณสามารถส่งภาพสลิปโอนเงินเข้ามาในแชตนี้ได้ทันที ระบบจะสแกนและบันทึกลงแดชบอร์ดให้คุณโดยอัตโนมัติ ✨',
+                  },
+                ],
+                lineToken
+              );
+            } else {
+              await replyLineMessage(
+                replyToken,
+                [
+                  {
+                    type: 'text',
+                    text: `❌ ${linkResult.error || 'รหัสเชื่อมต่อไม่ถูกต้อง'}\n\nกรุณาเข้าสู่ระบบหน้าเว็บและกด "สร้างรหัสเชื่อมต่อ" ใหม่อีกครั้งครับ`,
+                  },
+                ],
+                lineToken
+              );
+            }
+            continue;
           }
-          continue;
-        }
 
-        // 2. Summary query: "ยอดเงิน", "สรุป", "balance"
-        if (/^(?:ยอดเงิน|สรุป|เงินคงเหลือ|balance|รายงาน)$/i.test(text)) {
+          // 2. Summary query: "ยอดเงิน", "สรุป", "balance"
+          if (/^(?:ยอดเงิน|สรุป|เงินคงเหลือ|balance|รายงาน)$/i.test(text)) {
+            const linkedUser = await getLineUser(env.DB, lineUserId);
+            if (!linkedUser) {
+              await replyLineMessage(
+                replyToken,
+                [createLinkAccountFlexMessage(webUrl)],
+                lineToken
+              );
+              continue;
+            }
+
+            const summary = await getUserSummary(env.DB, linkedUser.user_id);
+            const replyText =
+              `📊 สรุปสถานะการเงินล่าสุด:\n\n` +
+              `💰 รายรับทั้งหมด: ฿${summary.total_income.toLocaleString('th-TH')}\n` +
+              `💳 รายจ่ายทั่วไป: ฿${summary.general_expense.toLocaleString('th-TH')}\n` +
+              `🏦 เงินออม/ลงทุน: ฿${summary.total_savings_invest.toLocaleString('th-TH')}\n` +
+              `------------------------\n` +
+              `⚖️ เงินคงเหลือสุทธิ (Net Savings): ฿${summary.balance.toLocaleString('th-TH')}\n` +
+              `💎 สินทรัพย์สุทธิรวม (Net Worth): ฿${summary.net_worth.toLocaleString('th-TH')}\n\n` +
+              `🌐 ดูรายละเอียดเพิ่มเติมได้ที่:\n${webUrl}`;
+
+            await replyLineMessage(replyToken, [{ type: 'text', text: replyText }], lineToken);
+            continue;
+          }
+
+          // 3. Help message
+          if (/^(?:วิธีใช้|help|เมนู|คำสั่ง)$/i.test(text)) {
+            const helpText =
+              `🤖 บอทผู้ช่วย ExpenseTracker Pro\n\n` +
+              `คำสั่งที่ใช้งานได้:\n` +
+              `📸 ส่งรูปสลิปโอนเงิน หรือ สลิป Dime! → บันทึกรายการอัตโนมัติ\n` +
+              `🔗 พิมพ์ "LINK รหัส6หลัก" → เชื่อมต่อบัญชี\n` +
+              `📊 พิมพ์ "สรุป" หรือ "ยอดเงิน" → ดูยอดคงเหลือและสินทรัพย์\n\n` +
+              `🌐 เข้าเว็บไซต์: ${webUrl}`;
+
+            await replyLineMessage(replyToken, [{ type: 'text', text: helpText }], lineToken);
+            continue;
+          }
+
+          // Default response for unlinked users
           const linkedUser = await getLineUser(env.DB, lineUserId);
           if (!linkedUser) {
             await replyLineMessage(
               replyToken,
               [createLinkAccountFlexMessage(webUrl)],
-            lineToken
+              lineToken
             );
-            continue;
           }
-
-          const summary = await getUserSummary(env.DB, linkedUser.user_id);
-          const replyText =
-            `📊 สรุปสถานะการเงินล่าสุด:\n\n` +
-            `💰 รายรับทั้งหมด: ฿${summary.total_income.toLocaleString('th-TH')}\n` +
-            `💳 รายจ่ายทั่วไป: ฿${summary.general_expense.toLocaleString('th-TH')}\n` +
-            `🏦 เงินออม/ลงทุน: ฿${summary.total_savings_invest.toLocaleString('th-TH')}\n` +
-            `------------------------\n` +
-            `⚖️ เงินคงเหลือสุทธิ (Net Savings): ฿${summary.balance.toLocaleString('th-TH')}\n` +
-            `💎 สินทรัพย์สุทธิรวม (Net Worth): ฿${summary.net_worth.toLocaleString('th-TH')}\n\n` +
-            `🌐 ดูรายละเอียดเพิ่มเติมได้ที่:\n${webUrl}`;
-
-          await replyLineMessage(replyToken, [{ type: 'text', text: replyText }], lineToken);
-          continue;
         }
-
-        // 3. Help message
-        if (/^(?:วิธีใช้|help|เมนู|คำสั่ง)$/i.test(text)) {
-          const helpText =
-            `🤖 บอทผู้ช่วย ExpenseTracker Pro\n\n` +
-            `คำสั่งที่ใช้งานได้:\n` +
-            `📸 ส่งรูปสลิปโอนเงิน → บันทึกรายการอัตโนมัติ\n` +
-            `🔗 พิมพ์ "LINK รหัส6หลัก" → เชื่อมต่อบัญชี\n` +
-            `📊 พิมพ์ "สรุป" หรือ "ยอดเงิน" → ดูยอดคงเหลือและสินทรัพย์\n\n` +
-            `🌐 เข้าเว็บไซต์: ${webUrl}`;
-
-          await replyLineMessage(replyToken, [{ type: 'text', text: helpText }], lineToken);
-          continue;
-        }
-
-        // Default response for unlinked users
-        const linkedUser = await getLineUser(env.DB, lineUserId);
-        if (!linkedUser) {
+      } catch (err: unknown) {
+        console.error('Unhandled LINE event processing error:', err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        try {
           await replyLineMessage(
             replyToken,
-            [createLinkAccountFlexMessage(webUrl)],
+            [
+              {
+                type: 'text',
+                text: `❌ เกิดข้อผิดพลาดในการประมวลผล: ${errMsg}\n\nกรุณาลองใหม่อีกครั้ง หรือบันทึกรายการผ่านหน้าเว็บครับ`,
+              },
+            ],
             lineToken
           );
+        } catch (replyErr) {
+          console.error('Failed to send error notification back to LINE user:', replyErr);
         }
       }
     }

@@ -53,7 +53,8 @@ export async function getLineMessageContentBase64(
   });
 
   if (!res.ok) {
-    throw new Error(`Failed to download LINE content: ${res.status}`);
+    const errBody = await res.text().catch(() => '');
+    throw new Error(`LINE image download failed (${res.status}): ${errBody || 'Unknown error'}`);
   }
 
   const mimeType = res.headers.get('content-type') || 'image/jpeg';
@@ -75,23 +76,30 @@ export async function replyLineMessage(
   replyToken: string,
   messages: unknown[],
   accessToken: string
-): Promise<void> {
+): Promise<boolean> {
   const url = 'https://api.line.me/v2/bot/message/reply';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      replyToken,
-      messages,
-    }),
-  });
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        replyToken,
+        messages,
+      }),
+    });
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    console.error('LINE Reply Error:', res.status, errorText);
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`LINE Reply Error (${res.status}):`, errorText);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error('LINE Reply network failure:', e);
+    return false;
   }
 }
 
