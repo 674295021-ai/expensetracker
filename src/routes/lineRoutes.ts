@@ -95,12 +95,26 @@ export async function handleLineRoutes(
           // Download slip image from LINE
           const { base64, mimeType } = await getLineMessageContentBase64(message.id, lineToken);
 
+          if (!gApiKey) {
+            await replyLineMessage(
+              replyToken,
+              [
+                {
+                  type: 'text',
+                  text: '⚠️ ยังไม่ได้กำหนดค่า GEMINI_API_KEY ในระบบหลังบ้าน กรุณาติดต่อผู้ดูแลระบบครับ',
+                },
+              ],
+              lineToken
+            );
+            continue;
+          }
+
           // OCR with Gemini Vision
           const slipResult = await parseSlipWithGeminiVision(gApiKey, base64, mimeType);
 
           if (slipResult.is_slip && slipResult.amount && slipResult.amount > 0) {
-            const txType = slipResult.type || 'expense';
-            const txCategory = slipResult.category || 'อาหารและเครื่องดื่ม';
+            const txType = slipResult.type === 'income' ? 'income' : 'expense';
+            const txCategory = slipResult.category || (txType === 'income' ? 'รายรับอื่นๆ' : 'อาหารและเครื่องดื่ม');
             const txDate = slipResult.date || new Date().toISOString().split('T')[0];
 
             let note = slipResult.note || '';
@@ -142,17 +156,18 @@ export async function handleLineRoutes(
                   text: '⚠️ ตรวจสอบรูปภาพแล้วไม่พบข้อมูลสลิปโอนเงินที่ชัดเจน\n\nโปรดตรวจสอบว่าเป็นภาพสลิปธนาคารที่มีตัวเลขยอดเงินชัดเจน แล้วลองส่งใหม่อีกครั้งครับ',
                 },
               ],
-            lineToken
+              lineToken
             );
           }
         } catch (err: unknown) {
           console.error('Slip processing error:', err);
+          const errMsg = err instanceof Error ? err.message : String(err);
           await replyLineMessage(
             replyToken,
             [
               {
                 type: 'text',
-                text: '❌ เกิดข้อผิดพลาดในการประมวลผลสลิป กรุณาลองใหม่อีกครั้ง หรือบันทึกรายการด้วยตนเองผ่านหน้าเว็บครับ',
+                text: `❌ เกิดข้อผิดพลาดในการประมวลผลสลิป (${errMsg.slice(0, 80)})\n\nกรุณาลองใหม่อีกครั้ง หรือบันทึกรายการด้วยตนเองผ่านหน้าเว็บครับ`,
               },
             ],
             lineToken
