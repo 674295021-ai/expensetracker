@@ -88,22 +88,25 @@ const Features = {
       const res = await API.request('/api/investments');
       const data = res.data || {};
       const investments = data.investments || [];
-      const summary = data.summary || {};
+
+      // Backend returns flat summary fields at top level (not nested in data.summary)
+      const total_principal = data.total_principal || 0;
+      const total_current_value = data.total_current_value || 0;
+      const total_profit_loss = data.total_profit_loss || 0;
+      const total_profit_loss_pct = data.total_profit_loss_pct || 0;
 
       // Update KPIs
-      Features._setEl('inv-kpi-principal', `฿${Features._fmt(summary.total_principal || 0)}`);
-      Features._setEl('inv-kpi-current', `฿${Features._fmt(summary.total_current || 0)}`);
-      const pl = summary.total_pl || 0;
+      Features._setEl('inv-kpi-principal', `฿${Features._fmt(total_principal)}`);
+      Features._setEl('inv-kpi-current', `฿${Features._fmt(total_current_value)}`);
       const plEl = document.getElementById('inv-kpi-pl');
       if (plEl) {
-        plEl.textContent = (pl >= 0 ? '+' : '') + `฿${Features._fmt(pl)}`;
-        plEl.className = `text-xl font-extrabold font-mono ${pl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+        plEl.textContent = (total_profit_loss >= 0 ? '+' : '') + `฿${Features._fmt(total_profit_loss)}`;
+        plEl.className = `text-xl font-extrabold font-mono ${total_profit_loss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
       }
-      const pct = summary.total_pl_pct || 0;
       const pctEl = document.getElementById('inv-kpi-pct');
       if (pctEl) {
-        pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
-        pctEl.className = `text-xl font-extrabold font-mono ${pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
+        pctEl.textContent = (total_profit_loss_pct >= 0 ? '+' : '') + total_profit_loss_pct.toFixed(2) + '%';
+        pctEl.className = `text-xl font-extrabold font-mono ${total_profit_loss_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`;
       }
 
       // Render table
@@ -135,12 +138,22 @@ const Features = {
         }
       }
 
-      // Render donut chart by asset_type
-      Features._renderInvDonut(data.by_asset_type || []);
+      // Render donut chart — by_asset_type from backend is an Object (Record<string, {...}>)
+      // Convert to array format: [{asset_type, total_current}]
+      const rawByType = data.by_asset_type || {};
+      const byTypeArray = Array.isArray(rawByType)
+        ? rawByType
+        : Object.entries(rawByType).map(([asset_type, vals]) => ({
+            asset_type,
+            total_current: (vals && vals.current_value) ? vals.current_value : Number(vals) || 0,
+          }));
+      Features._renderInvDonut(byTypeArray);
     } catch (e) {
       API.showToast(`โหลดพอร์ตการลงทุนไม่สำเร็จ: ${e.message}`, 'error');
     }
   },
+
+
 
   _renderInvDonut(byType) {
     const canvas = document.getElementById('chart-inv-donut');

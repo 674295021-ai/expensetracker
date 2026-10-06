@@ -198,8 +198,15 @@ const App = {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     const mainEl = document.querySelector('main');
     if (mainEl) mainEl.scrollTop = 0;
+
+    // Update tab visibility & scroll reset
+    document.querySelectorAll('.tab-content').forEach((tab) => {
+      tab.classList.remove('active');
+    });
+
     const targetTabEl = document.getElementById(`tab-${tabName}`);
     if (targetTabEl) {
+      targetTabEl.classList.add('active');
       targetTabEl.scrollTop = 0;
     }
 
@@ -215,17 +222,6 @@ const App = {
       }
     });
 
-    // Update tab visibility
-    document.querySelectorAll('.tab-content').forEach((tab) => {
-      tab.classList.remove('active');
-    });
-
-    const targetTabEl = document.getElementById(`tab-${tabName}`);
-    if (targetTabEl) {
-      targetTabEl.classList.add('active');
-    }
-
-    // Update Topbar Title
     const titleEl = document.getElementById('page-title');
     const titles = {
       overview: 'ภาพรวมการเงิน (Financial Overview)',
