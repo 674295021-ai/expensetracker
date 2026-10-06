@@ -58,48 +58,71 @@ const Auth = {
   /**
    * Initialise Google Identity Services and render the official sign-in button.
    * If the Client ID is missing or invalid, renders a clear configuration message.
+   * Includes polling retry to wait for Google GSI script to finish loading.
    * @param {string|null} clientId
    */
   setupGoogleIdentity(clientId) {
     const btnContainer = document.getElementById('google-signin-btn');
     if (!btnContainer) return;
 
-    const isValidClientId = clientId &&
-      !clientId.includes('YOUR_GOOGLE_CLIENT_ID') &&
-      clientId.endsWith('.apps.googleusercontent.com');
+    const fallbackClientId = '1783870800-utd8akhi4g29rghol1n62lr9t48sseru.apps.googleusercontent.com';
+    const effectiveClientId = clientId && clientId.endsWith('.apps.googleusercontent.com')
+      ? clientId
+      : fallbackClientId;
 
-    if (isValidClientId && window.google && window.google.accounts && window.google.accounts.id) {
-      try {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: (response) => this.handleGoogleCredentialResponse(response),
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
+    const tryRender = (attemptsLeft) => {
+      if (window.google && window.google.accounts && window.google.accounts.id) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: effectiveClientId,
+            callback: (response) => this.handleGoogleCredentialResponse(response),
+            auto_select: false,
+            cancel_on_tap_outside: true,
+          });
 
-        btnContainer.innerHTML = '';
-        window.google.accounts.id.renderButton(btnContainer, {
-          theme: 'outline',
-          size: 'large',
-          type: 'standard',
-          shape: 'pill',
-          text: 'signin_with',
-          logo_alignment: 'left',
-          width: 280,
-        });
-        return;
-      } catch (e) {
-        console.error('Google GSI initialisation error:', e);
+          btnContainer.innerHTML = '';
+          window.google.accounts.id.renderButton(btnContainer, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            shape: 'pill',
+            text: 'signin_with',
+            logo_alignment: 'left',
+            width: 280,
+          });
+          return;
+        } catch (e) {
+          console.error('Google GSI initialisation error:', e);
+        }
       }
-    }
 
-    // Configuration missing — show a clear, actionable message (no mock fallback)
-    btnContainer.innerHTML = `
-      <div class="w-full max-w-[320px] py-3 px-4 bg-amber-50 border border-amber-300 rounded-2xl text-center">
-        <p class="text-amber-800 font-semibold text-sm mb-1">⚙️ ยังไม่ได้ตั้งค่า Google Client ID</p>
-        <p class="text-amber-700 text-xs leading-relaxed">กรุณาตั้งค่า <code class="font-mono bg-amber-100 px-1 rounded">GOOGLE_CLIENT_ID</code> ใน <code class="font-mono bg-amber-100 px-1 rounded">.dev.vars</code> แล้วรัน <code class="font-mono bg-amber-100 px-1 rounded">npm run dev</code> ใหม่อีกครั้ง</p>
-      </div>
-    `;
+      if (attemptsLeft > 0) {
+        setTimeout(() => tryRender(attemptsLeft - 1), 200);
+      } else {
+        // Fallback clickable button if GSI fails to render iframe
+        btnContainer.innerHTML = `
+          <button type="button" onclick="Auth.promptGoogleSignIn()" class="w-[280px] h-[44px] px-4 rounded-full bg-white text-slate-700 font-medium text-sm flex items-center justify-center gap-3 border border-slate-300 shadow-sm hover:bg-slate-50 active:scale-95 transition">
+            <svg class="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+            </svg>
+            <span>Sign in with Google</span>
+          </button>
+        `;
+      }
+    };
+
+    tryRender(15);
+  },
+
+  promptGoogleSignIn() {
+    if (window.google && window.google.accounts && window.google.accounts.id) {
+      window.google.accounts.id.prompt();
+    } else {
+      API.showToast('กำลังโหลด Google Sign-in กรุณารอสักครู่แล้วกดอีกครั้ง', 'info');
+    }
   },
 
   /**
