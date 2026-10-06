@@ -27,7 +27,7 @@ export async function askGeminiFinancialAdvisor(
     recentTransactions?: Array<{ type: string; category: string; amount: number; transaction_date: string; note: string | null }>;
   }
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
   const { summary, investments, trips, recentTransactions } = financialContext;
 
@@ -147,7 +147,7 @@ export async function parseSlipWithGeminiVision(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<SlipOCRResult> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
   const prompt = `
 คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปการโอนเงินธนาคารไทย (Bank Transfer Slip Scanner)
