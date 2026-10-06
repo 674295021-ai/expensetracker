@@ -105,10 +105,11 @@ export async function handleLineRoutes(
       try {
         // A. Handling Image Messages (Slip OCR)
         if (message.type === 'image') {
+          console.log(`[LINE Webhook][Image] Processing image message ID: ${message.id} from user: ${lineUserId}`);
           const linkedUser = await getLineUser(env.DB, lineUserId);
 
           if (!linkedUser) {
-            // User not linked yet
+            console.log(`[LINE Webhook][Image] User ${lineUserId} is not linked yet, sending link instruction.`);
             await replyLineMessage(
               replyToken,
               [createLinkAccountFlexMessage(webUrl)],
@@ -117,7 +118,10 @@ export async function handleLineRoutes(
             continue;
           }
 
+          console.log(`[LINE Webhook][Image] Found linked user: ${linkedUser.user_id}`);
+
           if (!gApiKey) {
+            console.error('[LINE Webhook][Image] GEMINI_API_KEY is not defined in worker environment!');
             await replyLineMessage(
               replyToken,
               [
@@ -131,11 +135,42 @@ export async function handleLineRoutes(
             continue;
           }
 
-          // Download slip image from LINE
-          const { base64, mimeType } = await getLineMessageContentBase64(message.id, lineToken);
+          // Step 1: Download slip image from LINE
+          console.log(`[LINE Webhook][Image] Step 1: Downloading image from LINE content API for message ${message.id}...`);
+          let base64: string;
+          let mimeType: string;
+          try {
+            const downloaded = await getLineMessageContentBase64(message.id, lineToken);
+            base64 = downloaded.base64;
+            mimeType = downloaded.mimeType;
+            console.log(`[LINE Webhook][Image] Step 1 Success: Image downloaded (${mimeType}, base64 len: ${base64.length})`);
+          } catch (dlErr: unknown) {
+            const dlErrMsg = dlErr instanceof Error ? dlErr.message : String(dlErr);
+            console.error('[LINE Webhook][Image] Step 1 Failed (Download error):', dlErrMsg);
+            await replyLineMessage(
+              replyToken,
+              [{ type: 'text', text: `❌ ไม่สามารถดาวน์โหลดรูปภาพจาก LINE ได้: ${dlErrMsg}` }],
+              lineToken
+            );
+            continue;
+          }
 
-          // OCR with Gemini Vision
-          const slipResult = await parseSlipWithGeminiVision(gApiKey, base64, mimeType);
+          // Step 2: OCR with Gemini Vision
+          console.log(`[LINE Webhook][Image] Step 2: Analyzing slip with Gemini Vision API...`);
+          let slipResult;
+          try {
+            slipResult = await parseSlipWithGeminiVision(gApiKey, base64, mimeType);
+            console.log('[LINE Webhook][Image] Step 2 Success: Gemini Vision result:', JSON.stringify(slipResult));
+          } catch (ocrErr: unknown) {
+            const ocrErrMsg = ocrErr instanceof Error ? ocrErr.message : String(ocrErr);
+            console.error('[LINE Webhook][Image] Step 2 Failed (Gemini OCR error):', ocrErrMsg);
+            await replyLineMessage(
+              replyToken,
+              [{ type: 'text', text: `❌ ระบบวิเคราะห์สลิป (Gemini) ขัดข้อง: ${ocrErrMsg.slice(0, 100)}` }],
+              lineToken
+            );
+            continue;
+          }
 
           if (slipResult.is_slip && slipResult.amount && slipResult.amount > 0) {
             const isDime = slipResult.slip_type === 'dime' || /dime/i.test(slipResult.bank || slipResult.note || '');
@@ -154,6 +189,7 @@ export async function handleLineRoutes(
                 dimeNote += ` (${slipResult.shares} หุ้น @ ${priceText})`;
               }
 
+              console.log(`[LINE Webhook][Dime] Step 3: Saving Dime investment (${ticker}, ${totalAmount} THB) to D1...`);
               // 1. บันทึก/อัปเดตลงตาราง investments
               await upsertDimeInvestment(env.DB, linkedUser.user_id, {
                 name: ticker,
@@ -173,6 +209,7 @@ export async function handleLineRoutes(
               });
 
               // 3. ส่งข้อความตอบกลับสรุปการลงทุน Dime!
+              console.log(`[LINE Webhook][Dime] Step 4: Replying Dime confirmation to LINE...`);
               const dimeReplyText =
                 `📈 บันทึกการลงทุน Dime! สำเร็จ\n` +
                 `🔹 สินทรัพย์: ${ticker}\n` +
@@ -181,6 +218,7 @@ export async function handleLineRoutes(
                 `💼 บันทึกเข้าพอร์ต Investments เรียบร้อยแล้ว`;
 
               await replyLineMessage(replyToken, [{ type: 'text', text: dimeReplyText }], lineToken);
+              console.log(`[LINE Webhook][Dime] Flow complete!`);
             } else {
               // --- กรณีสลิปโอนเงินทั่วไป ---
               const txType = slipResult.type === 'income' ? 'income' : 'expense';
@@ -190,6 +228,7 @@ export async function handleLineRoutes(
               if (slipResult.recipient) note += ` (ผู้รับ: ${slipResult.recipient})`;
               if (slipResult.bank) note += ` [${slipResult.bank}]`;
 
+              console.log(`[LINE Webhook][Transfer] Step 3: Inserting transaction (${txType}, ${slipResult.amount} THB) to D1...`);
               // 1. บันทึกลงตาราง transactions
               await createTransaction(env.DB, linkedUser.user_id, {
                 type: txType,
@@ -203,6 +242,7 @@ export async function handleLineRoutes(
               const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
 
               // 3. ส่งข้อความตอบกลับสรุปตามรูปแบบที่กำหนด
+              console.log(`[LINE Webhook][Transfer] Step 4: Replying transfer confirmation to LINE...`);
               const label = txType === 'income' ? 'รายรับ' : 'รายจ่าย';
               const replyText =
                 `✅ บันทึก${label}สำเร็จ: ${slipResult.amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท\n` +
@@ -210,8 +250,10 @@ export async function handleLineRoutes(
                 `📊 สรุปรายจ่ายเดือนนี้: ${currentMonthExpense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`;
 
               await replyLineMessage(replyToken, [{ type: 'text', text: replyText }], lineToken);
+              console.log(`[LINE Webhook][Transfer] Flow complete!`);
             }
           } else {
+            console.log('[LINE Webhook][Image] Image is not recognized as a financial slip.');
             await replyLineMessage(
               replyToken,
               [
