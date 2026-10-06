@@ -1,0 +1,178 @@
+/* ===================================================================
+   Dribbble/Figma Quality Design System for ExpenseTracker Pro
+   Theme: Contrast Dual-Tone (Dark Sidebar & Light Crisp Content)
+   =================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Kanit:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --font-main: 'Plus Jakarta Sans', 'Kanit', -apple-system, BlinkMacSystemFont, sans-serif;
+  --bg-sidebar: #090d16;
+  --bg-sidebar-hover: #131b2e;
+  --bg-content: #f8fafc;
+  --card-bg: #ffffff;
+  --card-border: #f1f5f9;
+  --color-primary: #4f46e5;
+  --color-primary-light: #eef2ff;
+  --color-income: #10b981;
+  --color-income-light: #ecfdf5;
+  --color-expense: #f43f5e;
+  --color-expense-light: #fff1f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-main);
+  background-color: var(--bg-content);
+  color: #0f172a;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom Soft Shadows */
+.shadow-soft {
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05), 0 2px 6px -1px rgba(15, 23, 42, 0.02);
+}
+
+.shadow-card {
+  box-shadow: 0 10px 30px -4px rgba(15, 23, 42, 0.06), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+}
+
+.shadow-floating {
+  box-shadow: 0 20px 40px -8px rgba(15, 23, 42, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Sidebar Custom Scrollbar */
+aside ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+aside ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Active Navigation Item Indicator */
+.nav-item-active {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.25) 0%, rgba(99, 102, 241, 0.15) 100%);
+  color: #ffffff !important;
+  font-weight: 600;
+  border: 1px solid rgba(129, 140, 248, 0.3);
+  position: relative;
+}
+
+.nav-item-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15%;
+  height: 70%;
+  width: 4px;
+  background-color: #6366f1;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Modal Backdrop */
+.modal-backdrop-blur {
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+/* Animated Transitions */
+.tab-content {
+  display: none;
+  animation: fadeInTab 0.25s ease-out forwards;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+@keyframes fadeInTab {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Calculator Keypad Buttons */
+.calc-btn {
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  font-weight: 600;
+  border-radius: 1rem;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+}
+
+.calc-btn:active {
+  transform: scale(0.95);
+}
+
+.calc-btn-num {
+  background-color: #ffffff;
+  color: #1e293b;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.calc-btn-num:hover {
+  background-color: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.calc-btn-op {
+  background-color: #f1f5f9;
+  color: #4f46e5;
+  border: 1px solid #e2e8f0;
+}
+
+.calc-btn-op:hover {
+  background-color: #e2e8f0;
+}
+
+.calc-btn-action {
+  background-color: #fee2e2;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+}
+
+.calc-btn-action:hover {
+  background-color: #fca5a5;
+}
+
+.calc-btn-equals {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+.calc-btn-equals:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+}

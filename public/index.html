@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExpenseTracker Pro - ระบบบันทึกรายรับ-รายจ่าย</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            sidebar: '#090d16',
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Plus Jakarta Sans & Kanit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Google Identity Services API -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Custom Dribbble Style CSS -->
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased selection:bg-indigo-500 selection:text-white">
+
+  <!-- ===================================================================
+       1. PRODUCTION-READY LOGIN VIEW (Matching Dribbble Dark Theme)
+       =================================================================== -->
+  <section id="login-view" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950 overflow-hidden">
+    <!-- Ambient Glow Circles -->
+    <div class="absolute -top-32 -left-32 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none"></div>
+    <div class="absolute -bottom-32 -right-32 w-96 h-96 bg-emerald-600/15 rounded-full blur-[120px] pointer-events-none"></div>
+
+    <!-- Centered Login Card -->
+    <div class="relative w-full max-w-md bg-slate-900/90 border border-slate-800 shadow-2xl rounded-3xl p-8 sm:p-10 text-center backdrop-blur-xl animate-fade-in">
+      
+      <!-- Security Chip / Fingerprint Icon -->
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-indigo-950 via-slate-900 to-indigo-900 border border-indigo-500/30 flex items-center justify-center shadow-lg shadow-indigo-900/40 mb-6 group">
+        <svg class="w-8 h-8 text-indigo-400 group-hover:scale-105 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <!-- Fingerprint & Security Chip SVG -->
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 004 11m0 0a8.003 8.003 0 0015.357 2m-1.464 4.887A7.962 7.962 0 0020 11a8 8 0 00-16 0c0 2.228.878 4.256 2.31 5.755"></path>
+        </svg>
+      </div>
+
+      <!-- Title & Subtitle -->
+      <h1 class="text-3xl font-extrabold text-white tracking-tight mb-2">เข้าสู่ระบบ</h1>
+      <p class="text-slate-400 text-sm leading-relaxed mb-8 max-w-xs mx-auto">
+        เข้าสู่ระบบด้วย Google เพื่อเริ่มใช้งานระบบบันทึกรายรับ-รายจ่าย
+      </p>
+
+      <!-- Single Google Sign-In Button Container (Rendered via API) -->
+      <div class="flex justify-center w-full min-h-[44px]">
+        <div id="google-signin-btn" class="w-full flex justify-center"></div>
+      </div>
+
+      <!-- Security Trust Footer -->
+      <div class="mt-8 pt-6 border-t border-slate-800/80 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+        <svg class="w-4 h-4 text-emerald-500/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+        </svg>
+        <span>Secured by Google OAuth & Cloudflare D1</span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===================================================================
+       2. AUTHENTICATED DASHBOARD (Dribbble Dual-Tone Style)
+       =================================================================== -->
+  <div id="dashboard-view" class="hidden flex-1 flex flex-col md:flex-row min-h-screen">
+    
+    <!-- Mobile Sidebar Backdrop Overlay -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-slate-950/70 z-40 hidden md:hidden"></div>
+
+    <!-- LEFT SIDEBAR (Dark Theme) -->
+    <aside id="main-sidebar" class="fixed md:sticky top-0 left-0 h-screen w-64 md:w-72 bg-sidebar border-r border-slate-800 text-slate-300 z-50 flex flex-col justify-between p-5 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+      
+      <!-- Top: Brand & User Profile -->
+      <div class="space-y-6">
+        <!-- Brand Logo -->
+        <div class="flex items-center gap-3 px-2 py-1">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <h2 class="font-bold text-white tracking-tight text-base">ExpenseTracker</h2>
+              <span class="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">PRO</span>
+            </div>
+            <p class="text-[11px] text-slate-500">Financial Management</p>
+          </div>
+        </div>
+
+        <!-- User Profile Card in Sidebar -->
+        <div class="p-3 rounded-2xl bg-slate-900/80 border border-slate-800/80 flex items-center gap-3">
+          <img src="" alt="Avatar" class="user-display-avatar w-10 h-10 rounded-xl object-cover border border-slate-700 bg-slate-800">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="user-display-name text-xs font-semibold text-white truncate">User</span>
+              <span class="user-display-role"></span>
+            </div>
+            <p class="user-display-email text-[11px] text-slate-400 font-mono truncate"></p>
+          </div>
+        </div>
+
+        <!-- Main Navigation Menu -->
+        <nav class="space-y-1 text-sm font-medium">
+          <!-- Overview / Home -->
+          <a href="#" data-nav="overview" class="nav-item nav-item-active flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+            <span>หน้าหลัก (Home)</span>
+          </a>
+
+          <!-- Transactions -->
+          <a href="#" data-nav="transactions" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+            <span>รายการธุรกรรม (Transactions)</span>
+          </a>
+
+          <!-- Analytics -->
+          <a href="#" data-nav="analytics" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            <span>สถิติและกราฟ (Analytics)</span>
+          </a>
+
+          <!-- Calculator -->
+          <a href="#" data-nav="calculator" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            <span>เครื่องคิดเลข (Calculator)</span>
+          </a>
+
+          <!-- Trips - Travel Mode -->
+          <a href="#" data-nav="trips" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <span>ทริปเดินทาง (Trips)</span>
+          </a>
+
+          <!-- Investments - Portfolio Tracking -->
+          <a href="#" data-nav="investments" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            <span>พอร์ตการลงทุน (Investments)</span>
+          </a>
+
+          <!-- Chat - Gemini AI Advisor -->
+          <a href="#" data-nav="chat" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+            <span>AI ที่ปรึกษา (Gemini Chat)</span>
+          </a>
+
+          <!-- Admin Panel (Protected) -->
+          <a href="#" data-nav="admin" class="nav-item nav-admin-only hidden flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-amber-300/80 hover:bg-amber-500/10 hover:text-amber-200">
+            <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            <span>👑 Admin Panel</span>
+          </a>
+
+          <!-- Settings -->
+          <a href="#" data-nav="settings" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition text-slate-400 hover:bg-slate-900 hover:text-slate-200">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            <span>ตั้งค่า (Settings)</span>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Bottom: System Status & Log Out -->
+      <div class="pt-4 border-t border-slate-800/80 space-y-3">
+        <div class="px-3 py-2 rounded-xl bg-slate-900/60 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+          <span class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Cloudflare D1
+          </span>
+          <span class="text-slate-500">Connected</span>
+        </div>
+
+        <button onclick="Auth.logout()" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 border border-slate-800 text-xs font-semibold transition flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+          <span>ออกจากระบบ (Log Out)</span>
+        </button>
+      </div>
+
+    </aside>
+
+    <!-- MAIN CONTENT AREA (Clean Modern Theme) -->
+    <main class="flex-1 flex flex-col min-w-0 bg-slate-50">
+      
+      <!-- TOP BAR -->
+      <header class="sticky top-0 z-30 bg-white border-b border-slate-200/80 px-4 md:px-8 py-3.5 flex items-center justify-between shadow-xs">
+        
+        <!-- Left: Mobile Toggle & Page Title -->
+        <div class="flex items-center gap-3">
+          <button id="btn-mobile-sidebar-toggle" class="p-2 md:hidden rounded-xl text-slate-600 hover:bg-slate-100 transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+          <div>
+            <h1 id="page-title" class="text-base md:text-lg font-bold text-slate-800">ภาพรวมการเงิน (Financial Overview)</h1>
+          </div>
+        </div>
+
+        <!-- Right: Search, Quick Calculator Icon, Notifications, Avatar -->
+        <div class="flex items-center gap-2.5">
+          <!-- Quick Search -->
+          <div class="hidden lg:flex items-center relative w-64">
+            <input type="text" id="top-search" placeholder="ค้นหาบันทึก..." class="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-500 transition">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+          </div>
+
+          <!-- Quick Calculator Button -->
+          <button class="btn-open-quick-calc p-2 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 transition shadow-xs flex items-center gap-1.5 text-xs font-semibold" title="เครื่องคิดเลขด่วน">
+            <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+            <span class="hidden sm:inline">คิดเลขด่วน</span>
+          </button>
+
+          <!-- Notification Icon -->
+          <button class="p-2 rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200/80 transition relative" title="การแจ้งเตือน">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+            <span class="w-2 h-2 rounded-full bg-indigo-600 absolute top-2 right-2"></span>
+          </button>
+
+          <!-- Quick Avatar -->
+          <img src="" alt="Avatar" class="user-display-avatar w-8 h-8 rounded-full border border-slate-200 bg-slate-100 object-cover">
+        </div>
+
+      </header>
+
+      <!-- TAB 1: OVERVIEW / HOME -->
+      <section id="tab-overview" class="tab-content active p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        
+        <!-- Balance & Overview Cards (Dribbble Financial Cards) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          
+          <!-- Primary Card: Your Balance (Takes 1 Col) -->
+          <div class="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 text-white rounded-3xl p-6 shadow-card relative overflow-hidden flex flex-col justify-between">
+            <div class="absolute -right-10 -bottom-10 w-44 h-44 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none"></div>
+
+            <div>
+              <div class="flex items-center justify-between text-indigo-200 text-xs font-medium uppercase tracking-wider mb-2">
+                <span>ยอดเงินคงเหลือหลัก (Your Balance)</span>
+                <span class="px-2 py-0.5 rounded-full bg-white/10 text-[10px] text-white">สุทธิ</span>
+              </div>
+              <div id="balance-main-amount" class="text-3xl sm:text-4xl font-extrabold tracking-tight font-mono mb-4">฿0.00</div>
+            </div>
+
+            <div class="space-y-3 pt-3 border-t border-white/10">
+              <!-- Ratio Progress Bar -->
+              <div class="flex items-center justify-between text-xs text-slate-300">
+                <span id="balance-income-pct" class="text-emerald-400 font-medium">0% รายรับ</span>
+                <span id="balance-expense-pct" class="text-rose-400 font-medium">0% รายจ่าย</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden flex">
+                <div id="balance-progress-bar" class="bg-emerald-500 h-full transition-all duration-500" style="width: 50%;"></div>
+              </div>
+
+              <!-- Quick Action -->
+              <button class="btn-open-add-modal w-full mt-2 py-2.5 px-4 rounded-xl bg-white hover:bg-slate-100 text-indigo-950 font-bold text-xs shadow-md transition flex items-center justify-center gap-2">
+                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <span>บันทึกรายการใหม่ (+ Add Transaction)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Secondary Metrics Cards (Takes 2 Cols, 3 sub-cards) -->
+          <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            
+            <!-- Income Card -->
+            <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft flex flex-col justify-between">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">รายรับรวม (Income)</span>
+                <div class="w-9 h-9 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"></path></svg>
+                </div>
+              </div>
+              <div>
+                <div id="stat-card-income" class="text-2xl font-extrabold text-slate-800 font-mono">฿0.00</div>
+                <div class="text-[11px] text-emerald-600 font-medium mt-1.5 flex items-center gap-1">
+                  <span>กระแสเงินสดขาเข้าทั้งหมด</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Expense Card -->
+            <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft flex flex-col justify-between">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">รายจ่ายรวม (Expenses)</span>
+                <div class="w-9 h-9 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 13l-5 5m0 0l-5-5m5 5V6"></path></svg>
+                </div>
+              </div>
+              <div>
+                <div id="stat-card-expense" class="text-2xl font-extrabold text-slate-800 font-mono">฿0.00</div>
+                <div class="text-[11px] text-rose-600 font-medium mt-1.5 flex items-center gap-1">
+                  <span>ค่าใช้จ่ายและหนี้สินทั้งหมด</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Total Transactions Card -->
+            <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft flex flex-col justify-between">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">จำนวนรายการ</span>
+                <div class="w-9 h-9 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                </div>
+              </div>
+              <div>
+                <div id="stat-card-count" class="text-2xl font-extrabold text-slate-800 font-mono">0 รายการ</div>
+                <div class="text-[11px] text-slate-400 font-medium mt-1.5">ประวัติที่ถูกบันทึกไว้ในระบบ</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Analytics Preview Charts (2 Columns) -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <!-- Donut: Category Breakdown -->
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-bold text-slate-800 text-sm">สัดส่วนรายจ่ายตามหมวดหมู่ (Expenses)</h3>
+                <p class="text-xs text-slate-400">ภาพรวมการใช้จ่ายแบ่งตามหมวด</p>
+              </div>
+              <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">Donut Chart</span>
+            </div>
+            <div class="relative h-64 w-full flex items-center justify-center">
+              <canvas id="chart-category"></canvas>
+            </div>
+          </div>
+
+          <!-- Bar: Monthly Trend -->
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-bold text-slate-800 text-sm">แนวโน้มรายรับ-รายจ่าย (Monthly Trend)</h3>
+                <p class="text-xs text-slate-400">เปรียบเทียบกระแสเงินสด 6 เดือนย้อนหลัง</p>
+              </div>
+              <span class="text-xs font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">Bar Chart</span>
+            </div>
+            <div class="relative h-64 w-full">
+              <canvas id="chart-trend"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Transactions Section -->
+        <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-slate-800 text-sm md:text-base">รายการธุรกรรมล่าสุด (Recent Transactions)</h3>
+              <p class="text-xs text-slate-400">6 รายการบันทึกการเงินล่าสุดของคุณ</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="App.switchTab('transactions')" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline">
+                ดูทั้งหมด →
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50/70 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                  <th class="py-3 px-4">วันที่</th>
+                  <th class="py-3 px-4">หมวดหมู่ / หมายเหตุ</th>
+                  <th class="py-3 px-4">ประเภท</th>
+                  <th class="py-3 px-4 text-right">จำนวนเงิน</th>
+                  <th class="py-3 px-4 text-right">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="recent-transactions-tbody"></tbody>
+            </table>
+            <div id="recent-transactions-empty" class="hidden py-10 text-center text-slate-400 text-xs">
+              ยังไม่มีรายการธุรกรรม บันทึกรายการแรกเพื่อเริ่มต้น
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- TAB 2: FULL TRANSACTIONS -->
+      <section id="tab-transactions" class="tab-content p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft space-y-5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800">จัดการรายการธุรกรรมทั้งหมด</h2>
+              <p class="text-xs text-slate-400">ค้นหา กรอง และส่งออกรายงานการเงิน</p>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <button id="btn-export-csv" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                <span>Export CSV</span>
+              </button>
+              <button class="btn-open-add-modal px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                <span>+ เพิ่มรายการ</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Filters Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">ประเภท</label>
+              <select id="filter-type" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none">
+                <option value="">ทั้งหมด (All Types)</option>
+                <option value="income">เฉพาะรายรับ (Income)</option>
+                <option value="expense">เฉพาะรายจ่าย (Expense)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">หมวดหมู่</label>
+              <select id="filter-category" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none">
+                <option value="">ทุกหมวดหมู่</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">ตั้งแต่วันที่</label>
+              <input type="date" id="filter-start-date" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">ถึงวันที่</label>
+              <input type="date" id="filter-end-date" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-mono outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">ค้นหาคำสำคัญ</label>
+              <div class="flex gap-1.5">
+                <input type="text" id="filter-search" placeholder="โน้ตหรือหมวด..." class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs outline-none">
+                <button id="btn-reset-filters" class="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-xl text-xs transition" title="ล้างตัวกรอง">↺</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Full Table -->
+          <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50/70 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                  <th class="py-3 px-4">วันที่</th>
+                  <th class="py-3 px-4">หมวดหมู่ / รายละเอียด</th>
+                  <th class="py-3 px-4">ประเภท</th>
+                  <th class="py-3 px-4 text-right">จำนวนเงิน</th>
+                  <th class="py-3 px-4 text-right">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="full-transactions-tbody"></tbody>
+            </table>
+            <div id="full-transactions-empty" class="hidden py-12 text-center text-slate-400 text-xs">
+              ไม่พบรายการธุรกรรมตามเงื่อนไข
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: ANALYTICS -->
+      <section id="tab-analytics" class="tab-content p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        <!-- Analytics KPI Row -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-400">รายรับรวมทั้งหมด</span>
+              <span class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm font-bold">💰</span>
+            </div>
+            <div id="analytics-stat-income" class="text-xl sm:text-2xl font-bold font-mono text-emerald-600">฿0.00</div>
+            <div class="text-[11px] text-slate-400 mt-1">อัปเดตจาก D1 Database ล่าสุด</div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-400">รายจ่ายรวมทั้งหมด</span>
+              <span class="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-sm font-bold">💳</span>
+            </div>
+            <div id="analytics-stat-expense" class="text-xl sm:text-2xl font-bold font-mono text-rose-600">฿0.00</div>
+            <div class="text-[11px] text-slate-400 mt-1">อัปเดตจาก D1 Database ล่าสุด</div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-400">เงินคงเหลือสุทธิ</span>
+              <span class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">⚖️</span>
+            </div>
+            <div id="analytics-stat-balance" class="text-xl sm:text-2xl font-bold font-mono text-indigo-600">฿0.00</div>
+            <div class="text-[11px] text-slate-400 mt-1">ยอดเงินออมสะสมสุทธิ</div>
+          </div>
+
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-soft">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-400">อัตราการออมเงิน (Savings Rate)</span>
+              <span class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm font-bold">📈</span>
+            </div>
+            <div id="analytics-stat-savings-rate" class="text-xl sm:text-2xl font-bold font-mono text-slate-800">0%</div>
+            <div id="analytics-stat-savings-desc" class="text-[11px] text-slate-400 mt-1">คำนวณจากสัดส่วนรายรับ-รายจ่าย</div>
+          </div>
+        </div>
+
+        <!-- Main Charts Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Card 1: Expenses Donut Chart -->
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>🍩</span> สรุปสัดส่วนค่าใช้จ่ายตามหมวดหมู่
+                  </h3>
+                  <p class="text-xs text-slate-400">ร้อยละการใช้จ่ายแยกตามหมวดหมู่ (Expenses Donut Chart)</p>
+                </div>
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                  รายจ่าย (Expenses)
+                </span>
+              </div>
+              
+              <!-- Donut Chart Canvas Container -->
+              <div class="relative h-72 w-full flex items-center justify-center my-2">
+                <canvas id="chart-category-analytics"></canvas>
+              </div>
+            </div>
+
+            <!-- Category Breakdown Detailed List -->
+            <div class="mt-4 pt-4 border-t border-slate-100">
+              <div class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2.5">
+                <span>หมวดหมู่ค่าใช้จ่าย</span>
+                <span>จำนวนเงิน / สัดส่วน</span>
+              </div>
+              <div id="analytics-category-list" class="space-y-2 max-h-52 overflow-y-auto pr-1"></div>
+            </div>
+          </div>
+
+          <!-- Card 2: Monthly Trend Growth Chart -->
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <span>📊</span> การเติบโตของรายรับ-รายจ่าย
+                  </h3>
+                  <p class="text-xs text-slate-400">แนวโน้มรายรับ รายจ่าย และเส้นเงินออมสุทธิย้อนหลัง 6 เดือน (Monthly Trend)</p>
+                </div>
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  6 เดือนล่าสุด
+                </span>
+              </div>
+
+              <!-- Bar & Line Trend Chart Canvas Container -->
+              <div class="relative h-72 w-full my-2">
+                <canvas id="chart-trend-analytics"></canvas>
+              </div>
+            </div>
+
+            <!-- Monthly History Detailed List -->
+            <div class="mt-4 pt-4 border-t border-slate-100">
+              <div class="flex items-center justify-between text-xs font-semibold text-slate-500 mb-2.5">
+                <span>เดือน (Month)</span>
+                <span>รายรับ / รายจ่าย / เงินคงเหลือ</span>
+              </div>
+              <div id="analytics-monthly-list" class="space-y-2 max-h-52 overflow-y-auto pr-1"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: FINANCIAL CALCULATOR (Full View) -->
+      <section id="tab-calculator" class="tab-content p-4 md:p-8 space-y-6 max-w-4xl w-full mx-auto">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-soft">
+          <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+            <div>
+              <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <span>🧮</span> เครื่องคิดเลขการเงิน (Financial Calculator)
+              </h2>
+              <p class="text-xs text-slate-400">คำนวณภาษี VAT, หัก ณ ที่จ่าย หรือแบ่งเงินออม พร้อมนำไปบันทึกได้ทันที</p>
+            </div>
+            <button onclick="App.applyCalcToNewTransaction()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-md transition flex items-center gap-1.5">
+              <span>นำตัวเลขไปลงบันทึก ➔</span>
+            </button>
+          </div>
+
+          <!-- Calculator Display -->
+          <div class="bg-slate-900 rounded-3xl p-6 text-right text-white shadow-inner mb-6">
+            <div class="calc-expr-display text-sm font-mono text-indigo-300 min-h-[1.5rem] tracking-wider"></div>
+            <div class="calc-val-display text-4xl sm:text-5xl font-mono font-bold tracking-tight text-white mt-1">0</div>
+          </div>
+
+          <!-- Quick Financial Tax Shortcuts -->
+          <div class="grid grid-cols-3 gap-3 mb-4">
+            <button onclick="App.calcFinancial('vat7')" class="py-2.5 px-3 rounded-2xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition border border-indigo-200/60">
+              +7% VAT (รวมภาษี)
+            </button>
+            <button onclick="App.calcFinancial('wht3')" class="py-2.5 px-3 rounded-2xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold transition border border-amber-200/60">
+              -3% WHT (หัก ณ ที่จ่าย)
+            </button>
+            <button onclick="App.calcFinancial('save10')" class="py-2.5 px-3 rounded-2xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition border border-emerald-200/60">
+              10% ออมเงิน (Savings)
+            </button>
+          </div>
+
+          <!-- Keypad Grid -->
+          <div class="grid grid-cols-4 gap-3">
+            <button onclick="App.calcClear()" class="calc-btn calc-btn-action">C</button>
+            <button onclick="App.calcBackspace()" class="calc-btn calc-btn-op">⌫</button>
+            <button onclick="App.calcOperator('%')" class="calc-btn calc-btn-op">%</button>
+            <button onclick="App.calcOperator('÷')" class="calc-btn calc-btn-op">÷</button>
+
+            <button onclick="App.calcInput('7')" class="calc-btn calc-btn-num">7</button>
+            <button onclick="App.calcInput('8')" class="calc-btn calc-btn-num">8</button>
+            <button onclick="App.calcInput('9')" class="calc-btn calc-btn-num">9</button>
+            <button onclick="App.calcOperator('×')" class="calc-btn calc-btn-op">×</button>
+
+            <button onclick="App.calcInput('4')" class="calc-btn calc-btn-num">4</button>
+            <button onclick="App.calcInput('5')" class="calc-btn calc-btn-num">5</button>
+            <button onclick="App.calcInput('6')" class="calc-btn calc-btn-num">6</button>
+            <button onclick="App.calcOperator('-')" class="calc-btn calc-btn-op">-</button>
+
+            <button onclick="App.calcInput('1')" class="calc-btn calc-btn-num">1</button>
+            <button onclick="App.calcInput('2')" class="calc-btn calc-btn-num">2</button>
+            <button onclick="App.calcInput('3')" class="calc-btn calc-btn-num">3</button>
+            <button onclick="App.calcOperator('+')" class="calc-btn calc-btn-op">+</button>
+
+            <button onclick="App.calcInput('0')" class="calc-btn calc-btn-num col-span-2">0</button>
+            <button onclick="App.calcInput('.')" class="calc-btn calc-btn-num">.</button>
+            <button onclick="App.calcEquals()" class="calc-btn calc-btn-equals">=</button>
+          </div>
+
+          <!-- Copy Button Bottom -->
+          <div class="mt-6 flex items-center justify-between gap-4 pt-4 border-t border-slate-100">
+            <div class="calc-history-list text-xs text-slate-400"></div>
+            <button onclick="App.copyCalcResult()" class="py-2.5 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow-md transition flex items-center gap-2">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              <span>ก๊อปปี้ผลลัพธ์ (Copy Result)</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: ADMIN PANEL (Protected View) -->
+      <section id="tab-admin" class="tab-content p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        <div class="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+              👑 ศูนย์ควบคุมผู้ดูแลระบบ (Admin Panel)
+            </h2>
+            <p class="text-xs text-slate-500">ตรวจสอบและควบคุมข้อมูลผู้ใช้งานทั้งระบบ Cloudflare D1</p>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+            Role: Administrator
+          </span>
+        </div>
+
+        <!-- Admin Overview 5 Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-soft">
+            <span class="text-xs text-slate-400 block mb-1">ผู้ใช้ทั้งหมด (Users)</span>
+            <div id="admin-stat-users" class="text-2xl font-bold font-mono text-indigo-600">0</div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-soft">
+            <span class="text-xs text-slate-400 block mb-1">ธุรกรรมรวมทั้งระบบ</span>
+            <div id="admin-stat-tx" class="text-2xl font-bold font-mono text-purple-600">0</div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-soft">
+            <span class="text-xs text-slate-400 block mb-1">ยอดรายรับรวมระบบ</span>
+            <div id="admin-stat-income" class="text-2xl font-bold font-mono text-emerald-600">฿0.00</div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-soft">
+            <span class="text-xs text-slate-400 block mb-1">ยอดรายจ่ายรวมระบบ</span>
+            <div id="admin-stat-expense" class="text-2xl font-bold font-mono text-rose-600">฿0.00</div>
+          </div>
+          <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-soft">
+            <span class="text-xs text-slate-400 block mb-1">สภาพคล่องสุทธิ</span>
+            <div id="admin-stat-balance" class="text-2xl font-bold font-mono text-cyan-600">฿0.00</div>
+          </div>
+        </div>
+
+        <!-- All Users Table -->
+        <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft">
+          <h3 class="font-bold text-slate-800 text-sm mb-4">รายชื่อผู้ใช้งานทั้งหมดในระบบ (Registered Users)</h3>
+          <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                  <th class="py-3 px-4">ผู้ใช้งาน</th>
+                  <th class="py-3 px-4">สิทธิ์</th>
+                  <th class="py-3 px-4 text-center">จำนวนรายการ</th>
+                  <th class="py-3 px-4 text-right">ยอดเงินรวม</th>
+                  <th class="py-3 px-4 text-right">วันที่ลงทะเบียน</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- System Audit Log Table -->
+        <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft">
+          <h3 class="font-bold text-slate-800 text-sm mb-4">รายการบันทึกล่าสุดจากผู้ใช้ทั้งหมด (System Transactions Feed)</h3>
+          <div class="overflow-x-auto rounded-2xl border border-slate-100">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-xs uppercase tracking-wider text-slate-400">
+                  <th class="py-2.5 px-4">วันที่</th>
+                  <th class="py-2.5 px-4">ผู้ทำรายการ</th>
+                  <th class="py-2.5 px-4">หมวดหมู่</th>
+                  <th class="py-2.5 px-4">หมายเหตุ</th>
+                  <th class="py-2.5 px-4 text-right">จำนวนเงิน</th>
+                </tr>
+              </thead>
+              <tbody id="admin-tx-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 6: SETTINGS -->
+      <section id="tab-settings" class="tab-content p-4 md:p-8 space-y-6 max-w-4xl w-full mx-auto">
+        <div class="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-soft space-y-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-800">ข้อมูลบัญชีและการตั้งค่า (Account Settings)</h2>
+            <p class="text-xs text-slate-400">จัดการข้อมูลโปรไฟล์และสถานะการเชื่อมต่อบัญชี Google</p>
+          </div>
+
+          <div class="flex items-center gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+            <img src="" alt="Avatar" class="user-display-avatar w-16 h-16 rounded-2xl border border-slate-200 object-cover">
+            <div>
+              <h3 class="user-display-name text-base font-bold text-slate-800">User</h3>
+              <p class="user-display-email text-xs text-slate-500 font-mono"></p>
+              <div class="mt-2">
+                <span class="user-display-role"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- LINE Account Linking Section -->
+          <div class="pt-5 border-t border-slate-100">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded-lg bg-green-500 flex items-center justify-center text-white text-xs font-black">L</span>
+              เชื่อมต่อ LINE Account
+            </h3>
+            <p class="text-xs text-slate-400 mb-4">เชื่อมบัญชีกับ LINE เพื่อส่งสลิปผ่าน LINE Bot และรับสรุปการเงินผ่าน LINE</p>
+            <div id="line-link-status-card" class="p-4 rounded-2xl border border-slate-200 bg-slate-50 space-y-3">
+              <div id="line-linked-view" class="hidden">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2 text-green-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span class="text-sm font-semibold">เชื่อมต่อ LINE สำเร็จแล้ว</span>
+                  </div>
+                  <button onclick="App.unlinkLine()" class="text-xs text-rose-500 hover:text-rose-700 font-semibold">ยกเลิกเชื่อมต่อ</button>
+                </div>
+                <p class="text-xs text-slate-500">LINE User ID: <span id="line-user-id-display" class="font-mono text-slate-700"></span></p>
+              </div>
+              <div id="line-unlinked-view">
+                <p class="text-xs text-slate-500 mb-3">ยังไม่ได้เชื่อมต่อ LINE — กดปุ่มด้านล่างเพื่อรับรหัสเชื่อมต่อ แล้วส่งรหัสให้ LINE Bot ของเรา</p>
+                <button onclick="App.generateLineCode()" class="px-4 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-bold shadow-md transition flex items-center gap-2">
+                  <span>🔗 สร้างรหัสเชื่อมต่อ LINE</span>
+                </button>
+                <div id="line-link-code-box" class="hidden mt-3 p-3 rounded-xl bg-green-50 border border-green-200">
+                  <p class="text-xs text-slate-600 mb-1">ส่งข้อความนี้ใน LINE Bot:</p>
+                  <div class="font-mono text-lg font-bold text-green-700 text-center tracking-widest py-2" id="line-link-code-value"></div>
+                  <p class="text-[11px] text-slate-400 text-center">รหัสหมดอายุใน 10 นาที</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-100 flex justify-end">
+            <button onclick="Auth.logout()" class="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-md transition">
+              ออกจากระบบ Google
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 7: TRIPS - Travel Mode -->
+      <section id="tab-trips" class="tab-content p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">✈️ ทริปเดินทาง (Travel Mode)</h2>
+            <p class="text-xs text-slate-400 mt-0.5">ติดตามงบประมาณและค่าใช้จ่ายรายทริป</p>
+          </div>
+          <button onclick="App.openCreateTripModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            + สร้างทริปใหม่
+          </button>
+        </div>
+        <!-- Trip List -->
+        <div id="trips-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <!-- Populated by JS -->
+        </div>
+        <div id="trips-empty" class="hidden text-center py-16 text-slate-400 text-sm">ยังไม่มีทริป กดปุ่ม "+ สร้างทริปใหม่" เพื่อเริ่มต้น</div>
+      </section>
+
+      <!-- TAB 8: INVESTMENTS - Portfolio Tracking -->
+      <section id="tab-investments" class="tab-content p-4 md:p-8 space-y-6 max-w-7xl w-full mx-auto">
+        <!-- Header & Net Worth -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">📈 พอร์ตการลงทุน (Investment Portfolio)</h2>
+            <p class="text-xs text-slate-400 mt-0.5">ติดตามสินทรัพย์ลงทุน, ผลตอบแทน, และมูลค่าสุทธิ</p>
+          </div>
+          <button onclick="App.openCreateInvestmentModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            + เพิ่มสินทรัพย์
+          </button>
+        </div>
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft">
+            <div class="text-xs text-slate-400 mb-1">เงินลงทุนรวม (Principal)</div>
+            <div id="inv-kpi-principal" class="text-xl font-extrabold font-mono text-slate-800">฿0.00</div>
+          </div>
+          <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft">
+            <div class="text-xs text-slate-400 mb-1">มูลค่าปัจจุบัน (Current)</div>
+            <div id="inv-kpi-current" class="text-xl font-extrabold font-mono text-indigo-600">฿0.00</div>
+          </div>
+          <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft">
+            <div class="text-xs text-slate-400 mb-1">กำไร/ขาดทุน (P&L)</div>
+            <div id="inv-kpi-pl" class="text-xl font-extrabold font-mono text-emerald-600">+฿0.00</div>
+          </div>
+          <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft">
+            <div class="text-xs text-slate-400 mb-1">ผลตอบแทน (%)</div>
+            <div id="inv-kpi-pct" class="text-xl font-extrabold font-mono text-emerald-600">+0.00%</div>
+          </div>
+        </div>
+        <!-- Charts + Table -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft lg:col-span-1">
+            <h3 class="font-bold text-slate-800 text-sm mb-4">สัดส่วนตามประเภทสินทรัพย์</h3>
+            <div class="relative h-52 flex items-center justify-center">
+              <canvas id="chart-inv-donut"></canvas>
+            </div>
+          </div>
+          <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-soft lg:col-span-2">
+            <h3 class="font-bold text-slate-800 text-sm mb-4">รายการสินทรัพย์ในพอร์ต</h3>
+            <div class="overflow-x-auto rounded-2xl border border-slate-100">
+              <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-400">
+                    <th class="py-3 px-4">ชื่อ / สถาบัน</th>
+                    <th class="py-3 px-4">ประเภท</th>
+                    <th class="py-3 px-4 text-right">เงินต้น</th>
+                    <th class="py-3 px-4 text-right">ปัจจุบัน</th>
+                    <th class="py-3 px-4 text-right">P&L</th>
+                    <th class="py-3 px-4 text-right">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody id="investments-tbody"></tbody>
+              </table>
+              <div id="investments-empty" class="hidden py-10 text-center text-slate-400 text-xs">ยังไม่มีสินทรัพย์ในพอร์ต</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 9: GEMINI AI CHAT -->
+      <section id="tab-chat" class="tab-content p-4 md:p-8 max-w-4xl w-full mx-auto flex flex-col" style="height: calc(100vh - 72px);">
+        <div class="flex flex-col flex-1 bg-white rounded-3xl border border-slate-100 shadow-soft overflow-hidden">
+          <!-- Chat Header -->
+          <div class="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex items-center justify-center shadow-lg">
+              <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+            </div>
+            <div>
+              <h2 class="font-bold text-slate-800 text-sm">Gemini AI ที่ปรึกษาการเงิน</h2>
+              <p class="text-[11px] text-slate-400">Powered by Google Gemini 2.5 Flash · วิเคราะห์ข้อมูลการเงินของคุณ</p>
+            </div>
+            <span class="ml-auto flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>Online
+            </span>
+          </div>
+          <!-- Chat Messages -->
+          <div id="chat-messages" class="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div class="flex gap-3">
+              <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-500 flex-shrink-0 flex items-center justify-center text-white text-xs font-bold">AI</div>
+              <div class="bg-indigo-50 rounded-2xl rounded-tl-none px-4 py-3 text-xs text-slate-700 max-w-[80%]">
+                สวัสดีครับ! ผมคือ Gemini AI ที่ปรึกษาการเงินของคุณ 🤖<br>ผมมีข้อมูลสรุปการเงินของคุณแล้ว ลองถามผมเกี่ยวกับรายรับ-รายจ่าย, การออม, หรือขอคำแนะนำการลงทุนได้เลย!
+              </div>
+            </div>
+          </div>
+          <!-- Chat Input -->
+          <div class="px-6 py-4 border-t border-slate-100 flex gap-3 items-end">
+            <textarea id="chat-input" rows="1" placeholder="พิมพ์คำถามเกี่ยวกับการเงินของคุณ..." class="flex-1 resize-none px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();App.sendChatMessage();}"></textarea>
+            <button onclick="App.sendChatMessage()" id="chat-send-btn" class="flex-shrink-0 w-10 h-10 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center shadow-md transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ===================================================================
+       3. POP-UP MODALS
+       =================================================================== -->
+
+  <!-- ADD TRANSACTION MODAL (Clean White Minimalist Style) -->
+  <div id="transaction-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-floating border border-slate-100 relative animate-fade-in">
+      <div class="flex items-center justify-between pb-3 mb-5 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800 flex items-center gap-2">
+          <span class="w-7 h-7 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm font-bold">+</span>
+          บันทึกรายการใหม่
+        </h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+
+      <form id="transaction-form" class="space-y-4">
+        <!-- Type Selection -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">ประเภทรายการ</label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center justify-center gap-2 p-2.5 rounded-2xl border border-slate-200 bg-slate-50 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-700 transition font-medium text-xs">
+              <input type="radio" name="tx-type" value="income" class="hidden">
+              <span>รายรับ (Income)</span>
+            </label>
+            <label class="flex items-center justify-center gap-2 p-2.5 rounded-2xl border border-slate-200 bg-slate-50 cursor-pointer has-[:checked]:bg-rose-50 has-[:checked]:border-rose-500 has-[:checked]:text-rose-700 transition font-medium text-xs">
+              <input type="radio" name="tx-type" value="expense" checked class="hidden">
+              <span>รายจ่าย (Expense)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Category -->
+        <div>
+          <label for="tx-category" class="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่</label>
+          <select id="tx-category" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" required></select>
+        </div>
+
+        <!-- Amount with Paste from Calc Button -->
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label for="tx-amount" class="text-xs font-semibold text-slate-600">จำนวนเงิน (THB)</label>
+            <button type="button" id="btn-paste-calc" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition flex items-center gap-1">
+              <span>📋 วางจากเครื่องคิดเลข</span>
+            </button>
+          </div>
+          <div class="relative">
+            <input type="number" id="tx-amount" step="0.01" min="0.01" placeholder="0.00" class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono font-bold focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" required>
+            <span class="absolute left-3.5 top-2.5 text-slate-400 text-sm font-semibold">฿</span>
+          </div>
+        </div>
+
+        <!-- Date -->
+        <div>
+          <label for="tx-date" class="block text-xs font-semibold text-slate-600 mb-1">วันที่ทำรายการ</label>
+          <input type="date" id="tx-date" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none" required>
+        </div>
+
+        <!-- Note -->
+        <div>
+          <label for="tx-note" class="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ (ถ้ามี)</label>
+          <input type="text" id="tx-note" placeholder="เช่น ค่ากาแฟ, เงินเดือนประจำงวด" maxlength="255" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs focus:bg-white focus:ring-1 focus:ring-indigo-500 outline-none">
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition">ยกเลิก</button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">บันทึกรายการ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT TRANSACTION MODAL -->
+  <div id="edit-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-floating border border-slate-100 relative animate-fade-in">
+      <div class="flex items-center justify-between pb-3 mb-5 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800">แก้ไขรายการธุรกรรม</h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1.5">ประเภทรายการ</label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center justify-center gap-2 p-2 rounded-2xl border border-slate-200 bg-slate-50 cursor-pointer has-[:checked]:bg-emerald-50 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-700 font-medium text-xs">
+              <input type="radio" id="edit-tx-type-income" name="edit-tx-type" value="income" class="hidden">
+              <span>รายรับ (Income)</span>
+            </label>
+            <label class="flex items-center justify-center gap-2 p-2 rounded-2xl border border-slate-200 bg-slate-50 cursor-pointer has-[:checked]:bg-rose-50 has-[:checked]:border-rose-500 has-[:checked]:text-rose-700 font-medium text-xs">
+              <input type="radio" id="edit-tx-type-expense" name="edit-tx-type" value="expense" class="hidden">
+              <span>รายจ่าย (Expense)</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label for="edit-tx-category" class="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่</label>
+          <select id="edit-tx-category" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium outline-none"></select>
+        </div>
+
+        <div>
+          <label for="edit-tx-amount" class="block text-xs font-semibold text-slate-600 mb-1">จำนวนเงิน (THB)</label>
+          <input type="number" id="edit-tx-amount" step="0.01" min="0.01" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-mono font-bold outline-none" required>
+        </div>
+
+        <div>
+          <label for="edit-tx-date" class="block text-xs font-semibold text-slate-600 mb-1">วันที่</label>
+          <input type="date" id="edit-tx-date" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none" required>
+        </div>
+
+        <div>
+          <label for="edit-tx-note" class="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ</label>
+          <input type="text" id="edit-tx-note" maxlength="255" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none">
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+          <button type="button" onclick="App.handleEditSubmit()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">บันทึกการแก้ไข</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUICK CALCULATOR MODAL (Popup Modal) -->
+  <div id="quick-calc-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-7 w-full max-w-sm shadow-floating border border-slate-100 relative animate-fade-in">
+      <div class="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+        <h3 class="font-bold text-sm text-slate-800 flex items-center gap-2">
+          <span>🧮</span> เครื่องคิดเลขด่วน
+        </h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+
+      <!-- Display -->
+      <div class="bg-slate-900 rounded-2xl p-4 text-right text-white shadow-inner mb-4">
+        <div class="calc-expr-display text-xs font-mono text-indigo-300 min-h-[1rem]"></div>
+        <div class="calc-val-display text-3xl font-mono font-bold tracking-tight text-white mt-0.5">0</div>
+      </div>
+
+      <!-- Quick Tax -->
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <button onclick="App.calcFinancial('vat7')" class="py-1.5 rounded-xl bg-indigo-50 text-indigo-700 text-[11px] font-bold">+7% VAT</button>
+        <button onclick="App.calcFinancial('wht3')" class="py-1.5 rounded-xl bg-amber-50 text-amber-700 text-[11px] font-bold">-3% WHT</button>
+        <button onclick="App.calcFinancial('save10')" class="py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-[11px] font-bold">10% ออม</button>
+      </div>
+
+      <!-- Keypad -->
+      <div class="grid grid-cols-4 gap-2 mb-4">
+        <button onclick="App.calcClear()" class="calc-btn !h-11 calc-btn-action text-sm">C</button>
+        <button onclick="App.calcBackspace()" class="calc-btn !h-11 calc-btn-op text-sm">⌫</button>
+        <button onclick="App.calcOperator('%')" class="calc-btn !h-11 calc-btn-op text-sm">%</button>
+        <button onclick="App.calcOperator('÷')" class="calc-btn !h-11 calc-btn-op text-sm">÷</button>
+
+        <button onclick="App.calcInput('7')" class="calc-btn !h-11 calc-btn-num text-sm">7</button>
+        <button onclick="App.calcInput('8')" class="calc-btn !h-11 calc-btn-num text-sm">8</button>
+        <button onclick="App.calcInput('9')" class="calc-btn !h-11 calc-btn-num text-sm">9</button>
+        <button onclick="App.calcOperator('×')" class="calc-btn !h-11 calc-btn-op text-sm">×</button>
+
+        <button onclick="App.calcInput('4')" class="calc-btn !h-11 calc-btn-num text-sm">4</button>
+        <button onclick="App.calcInput('5')" class="calc-btn !h-11 calc-btn-num text-sm">5</button>
+        <button onclick="App.calcInput('6')" class="calc-btn !h-11 calc-btn-num text-sm">6</button>
+        <button onclick="App.calcOperator('-')" class="calc-btn !h-11 calc-btn-op text-sm">-</button>
+
+        <button onclick="App.calcInput('1')" class="calc-btn !h-11 calc-btn-num text-sm">1</button>
+        <button onclick="App.calcInput('2')" class="calc-btn !h-11 calc-btn-num text-sm">2</button>
+        <button onclick="App.calcInput('3')" class="calc-btn !h-11 calc-btn-num text-sm">3</button>
+        <button onclick="App.calcOperator('+')" class="calc-btn !h-11 calc-btn-op text-sm">+</button>
+
+        <button onclick="App.calcInput('0')" class="calc-btn !h-11 calc-btn-num col-span-2 text-sm">0</button>
+        <button onclick="App.calcInput('.')" class="calc-btn !h-11 calc-btn-num text-sm">.</button>
+        <button onclick="App.calcEquals()" class="calc-btn !h-11 calc-btn-equals text-sm">=</button>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="App.copyCalcResult()" class="py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center justify-center gap-1.5">
+          <span>📋 คัดลอกตัวเลข</span>
+        </button>
+        <button onclick="App.applyCalcToNewTransaction()" class="py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs">
+          <span>ลงบันทึกทันที ➔</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+  <!-- CREATE TRIP MODAL -->
+  <div id="trip-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-floating border border-slate-100 relative animate-fade-in">
+      <div class="flex items-center justify-between pb-3 mb-5 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800 flex items-center gap-2">✈️ สร้างทริปใหม่</h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อทริป *</label>
+          <input type="text" id="trip-name" placeholder="เช่น เที่ยวเชียงใหม่ 2026" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">จุดหมายปลายทาง</label>
+          <input type="text" id="trip-destination" placeholder="เช่น เชียงใหม่, ไทย" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">วันที่เริ่มต้น *</label>
+            <input type="date" id="trip-start-date" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">วันที่สิ้นสุด *</label>
+            <input type="date" id="trip-end-date" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">งบประมาณทริป (THB)</label>
+          <input type="number" id="trip-budget" step="0.01" min="0" placeholder="0.00" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+          <button type="button" onclick="App.handleCreateTrip()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">สร้างทริป ✈️</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CREATE INVESTMENT MODAL -->
+  <div id="investment-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md shadow-floating border border-slate-100 relative animate-fade-in">
+      <div class="flex items-center justify-between pb-3 mb-5 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800 flex items-center gap-2">📈 เพิ่มสินทรัพย์ลงทุน</h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อสินทรัพย์ *</label>
+          <input type="text" id="inv-name" placeholder="เช่น หุ้น KBANK, กองทุน CIMB-PRINCIPAL" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">สถาบัน / แอป *</label>
+          <input type="text" id="inv-institution" placeholder="เช่น Bitkub, SCB Easy, Krungsri" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500" required>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">ประเภทสินทรัพย์ *</label>
+          <select id="inv-asset-type" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-medium outline-none focus:ring-1 focus:ring-indigo-500" required>
+            <option value="">-- เลือกประเภท --</option>
+            <option value="หุ้น (Stock)">หุ้น (Stock)</option>
+            <option value="กองทุนรวม (Mutual Fund)">กองทุนรวม (Mutual Fund)</option>
+            <option value="คริปโต (Crypto)">คริปโต (Crypto)</option>
+            <option value="พันธบัตร (Bond)">พันธบัตร (Bond)</option>
+            <option value="เงินฝากประจำ (Fixed Deposit)">เงินฝากประจำ (Fixed Deposit)</option>
+            <option value="อสังหาริมทรัพย์ (Real Estate)">อสังหาริมทรัพย์ (Real Estate)</option>
+            <option value="ทองคำ (Gold)">ทองคำ (Gold)</option>
+            <option value="อื่นๆ (Other)">อื่นๆ (Other)</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">เงินลงทุน / เงินต้น (THB) *</label>
+            <input type="number" id="inv-principal" step="0.01" min="0" placeholder="0.00" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">มูลค่าปัจจุบัน (THB) *</label>
+            <input type="number" id="inv-current" step="0.01" min="0" placeholder="0.00" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ</label>
+          <input type="text" id="inv-note" placeholder="เพิ่มเติม..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+          <button type="button" onclick="App.handleCreateInvestment()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">เพิ่มสินทรัพย์ 📈</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Core Scripts -->
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/features.js"></script>
+</body>
+</html>

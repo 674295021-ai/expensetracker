@@ -1,0 +1,7 @@
+# Cloudflare Worker Local Environment Variables (.dev.vars)
+# Copy this file to .dev.vars and update values as needed
+
+JWT_SECRET="income_expense_super_secret_jwt_key_2026_change_in_prod"
+GOOGLE_CLIENT_ID="YOUR_GOOGLE_CLIENT_ID_HERE.apps.googleusercontent.com"
+GOOGLE_CLIENT_SECRET="YOUR_GOOGLE_CLIENT_SECRET_HERE"
+ENVIRONMENT="development"

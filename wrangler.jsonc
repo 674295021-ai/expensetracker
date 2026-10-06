@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "income-expense-tracker",
+  "main": "src/index.ts",
+  "compatibility_date": "2024-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "expense-tracker-db",
+      "database_id": "f3f18634-7498-43c9-83de-b959a6512f5f"
+    }
+  ],
+  "vars": {
+    "GOOGLE_CLIENT_ID": "1783870800-utd8akhi4g29rghol1n62lr9t48sseru.apps.googleusercontent.com",
+    "ENVIRONMENT": "production"
+  }
+}
