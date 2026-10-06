@@ -273,7 +273,8 @@ const Features = {
       // Replace loading bubble
       const loadingEl = document.getElementById(loadingId);
       if (loadingEl) {
-        loadingEl.innerHTML = Features._md(res.data?.reply || 'ขออภัย ไม่สามารถตอบได้ในขณะนี้');
+        const replyText = res.data?.answer || res.data?.reply || 'ขออภัย ไม่สามารถตอบได้ในขณะนี้';
+        loadingEl.innerHTML = Features._md(replyText);
       }
     } catch (e) {
       const loadingEl = document.getElementById(loadingId);

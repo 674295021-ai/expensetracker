@@ -16,7 +16,7 @@ export interface SlipOCRResult {
   raw_text?: string;
 }
 
-const CANDIDATE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+const CANDIDATE_MODELS = ['gemini-2.0-flash'];
 
 export async function askGeminiFinancialAdvisor(
   apiKey: string,
