@@ -16,7 +16,46 @@ export interface SlipOCRResult {
   raw_text?: string;
 }
 
-const CANDIDATE_MODELS = ['gemini-2.5-flash'];
+const DEFAULT_CANDIDATE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+
+/**
+ * Auto-detect available Gemini models supporting generateContent from Google API.
+ * Falls back to DEFAULT_CANDIDATE_MODELS if fetch fails or no matching model found.
+ */
+async function getAvailableGeminiModels(apiKey: string): Promise<string[]> {
+  try {
+    const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+    const res = await fetch(listUrl, { method: 'GET' });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        models?: Array<{
+          name?: string;
+          supportedGenerationMethods?: string[];
+        }>;
+      };
+
+      if (data.models && Array.isArray(data.models)) {
+        // Filter models that support generateContent and contain 'flash' or 'pro'
+        const matched = data.models
+          .filter((m) => {
+            const supports = (m.supportedGenerationMethods || []).includes('generateContent');
+            const cleanName = (m.name || '').replace(/^models\//, '').toLowerCase();
+            return supports && (cleanName.includes('flash') || cleanName.includes('pro'));
+          })
+          .map((m) => (m.name || '').replace(/^models\//, ''));
+
+        if (matched.length > 0) {
+          // Merge matched models with default candidates (deduped, matched models first)
+          return Array.from(new Set([...matched, ...DEFAULT_CANDIDATE_MODELS]));
+        }
+      }
+    }
+  } catch (err: unknown) {
+    console.warn('Failed to auto-detect Gemini models, falling back to defaults:', err);
+  }
+
+  return DEFAULT_CANDIDATE_MODELS;
+}
 
 export async function askGeminiFinancialAdvisor(
   apiKey: string,
@@ -116,8 +155,9 @@ ${JSON.stringify(contextData, null, 2)}
   };
 
   let lastError: Error | null = null;
+  const modelsToTry = await getAvailableGeminiModels(apiKey);
 
-  for (const model of CANDIDATE_MODELS) {
+  for (const model of modelsToTry) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
@@ -220,8 +260,9 @@ export async function parseSlipWithGeminiVision(
   };
 
   let lastError: Error | null = null;
+  const modelsToTry = await getAvailableGeminiModels(apiKey);
 
-  for (const model of CANDIDATE_MODELS) {
+  for (const model of modelsToTry) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
