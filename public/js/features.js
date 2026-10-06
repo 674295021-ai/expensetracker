@@ -149,15 +149,24 @@ const Features = {
       Features._invDonutChart.destroy();
       Features._invDonutChart = null;
     }
-    if (!byType || byType.length === 0) return;
+
+    // Defensive Guard Check: ensure byType is an Array
+    const safeByType = Array.isArray(byType)
+      ? byType
+      : Object.entries(byType || {}).map(([asset_type, total_current]) => ({
+          asset_type,
+          total_current: Number(total_current) || 0,
+        }));
+
+    if (!safeByType || safeByType.length === 0) return;
     const colors = ['#6366f1','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'];
     Features._invDonutChart = new Chart(canvas, {
       type: 'doughnut',
       data: {
-        labels: byType.map((d) => d.asset_type),
+        labels: safeByType.map((d) => d.asset_type || d.type || 'อื่นๆ'),
         datasets: [{
-          data: byType.map((d) => d.total_current),
-          backgroundColor: colors.slice(0, byType.length),
+          data: safeByType.map((d) => Number(d.total_current || d.amount) || 0),
+          backgroundColor: colors.slice(0, safeByType.length),
           borderWidth: 0,
         }],
       },

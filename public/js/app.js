@@ -194,6 +194,15 @@ const App = {
 
     this.currentTab = tabName;
 
+    // Reset scroll to top on page/tab change
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mainEl = document.querySelector('main');
+    if (mainEl) mainEl.scrollTop = 0;
+    const targetTabEl = document.getElementById(`tab-${tabName}`);
+    if (targetTabEl) {
+      targetTabEl.scrollTop = 0;
+    }
+
     // Update active class on sidebar navigation
     document.querySelectorAll('.nav-item').forEach((item) => {
       const target = item.getAttribute('data-nav');
