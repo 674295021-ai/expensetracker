@@ -16,6 +16,8 @@ export interface SlipOCRResult {
   raw_text?: string;
 }
 
+const CANDIDATE_MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+
 export async function askGeminiFinancialAdvisor(
   apiKey: string,
   userMessage: string,
@@ -27,8 +29,6 @@ export async function askGeminiFinancialAdvisor(
     recentTransactions?: Array<{ type: string; category: string; amount: number; transaction_date: string; note: string | null }>;
   }
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
-
   const { summary, investments, trips, recentTransactions } = financialContext;
 
   const contextData = {
@@ -115,31 +115,43 @@ ${JSON.stringify(contextData, null, 2)}
     },
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gemini API Error (${response.status}): ${errorText}`);
-  }
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-  const data = (await response.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{ text?: string }>;
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API (${model}) Error (${response.status}): ${errorText}`);
+      }
+
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
       };
-    }>;
-  };
 
-  const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!answer) {
-    throw new Error('Gemini API returned empty response');
+      const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!answer) {
+        throw new Error(`Gemini API (${model}) returned empty response`);
+      }
+
+      return answer;
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`Model ${model} failed, trying next candidate:`, lastError.message);
+    }
   }
 
-  return answer;
+  throw lastError || new Error('All candidate Gemini models failed');
 }
 
 export async function parseSlipWithGeminiVision(
@@ -147,8 +159,6 @@ export async function parseSlipWithGeminiVision(
   imageBase64: string,
   mimeType: string = 'image/jpeg'
 ): Promise<SlipOCRResult> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
-
   const prompt = `
 คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปการโอนเงินธนาคารไทย (Bank Transfer Slip Scanner)
 โปรดอ่านรูปภาพสลิปนี้และสกัดข้อมูลออกมาเป็น JSON เท่านั้น (Strict JSON Output):
@@ -209,36 +219,47 @@ export async function parseSlipWithGeminiVision(
     },
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini Vision Error (${response.status}): ${errText}`);
-  }
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-  const data = (await response.json()) as {
-    candidates?: Array<{
-      content?: {
-        parts?: Array<{ text?: string }>;
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini Vision (${model}) Error (${response.status}): ${errText}`);
+      }
+
+      const data = (await response.json()) as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{ text?: string }>;
+          };
+        }>;
       };
-    }>;
-  };
 
-  const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawJson) {
-    throw new Error('Gemini Vision returned empty text');
+      const rawJson = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawJson) {
+        throw new Error(`Gemini Vision (${model}) returned empty text`);
+      }
+
+      try {
+        const parsed = JSON.parse(rawJson) as SlipOCRResult;
+        return parsed;
+      } catch (e) {
+        const clean = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(clean) as SlipOCRResult;
+      }
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`Vision model ${model} failed, trying next candidate:`, lastError.message);
+    }
   }
 
-  try {
-    const parsed = JSON.parse(rawJson) as SlipOCRResult;
-    return parsed;
-  } catch (e) {
-    // If markdown wrapped
-    const clean = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(clean) as SlipOCRResult;
-  }
+  throw lastError || new Error('All candidate Gemini models failed for vision OCR');
 }
