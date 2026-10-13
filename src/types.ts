@@ -50,6 +50,7 @@ export interface Env {
   LINE_CHANNEL_ID?: string;
   LINE_CHANNEL_SECRET?: string;
   LINE_CHANNEL_ACCESS_TOKEN?: string;
+  STOCK_API_KEY?: string;
 }
 
 export interface SummaryData {

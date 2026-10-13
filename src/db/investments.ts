@@ -177,6 +177,57 @@ export async function deleteInvestment(db: D1Database, id: string, userId: strin
   return (result.meta?.changes ?? 0) > 0;
 }
 
+export async function upsertStockInvestment(
+  db: D1Database,
+  userId: string,
+  data: {
+    name: string;
+    institution?: string;
+    asset_type?: string;
+    shares?: number;
+    price?: number;
+    amount: number;
+    note?: string;
+  }
+): Promise<{ investment: Investment; isNew: boolean }> {
+  const ticker = data.name.trim();
+  const institution = data.institution?.trim() || 'Dime!';
+  const assetType = data.asset_type?.trim() || 'หุ้น (Stock)';
+
+  const existing = await db
+    .prepare('SELECT * FROM investments WHERE user_id = ? AND institution = ? AND name = ?')
+    .bind(userId, institution, ticker)
+    .first<Investment>();
+
+  const shareNotePart = data.shares
+    ? `${data.shares} หุ้น${data.price ? ` @ ฿${data.price.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}`
+    : '';
+  const noteContent = [data.note, shareNotePart].filter(Boolean).join(' | ');
+
+  if (existing) {
+    const newPrincipal = Math.round((existing.principal + data.amount) * 100) / 100;
+    const newCurrent = Math.round((existing.current_value + data.amount) * 100) / 100;
+    const updatedNote = (existing.note ? `${existing.note} | ${noteContent}` : noteContent).slice(0, 500);
+
+    const updated = await updateInvestment(db, existing.id, userId, {
+      principal: newPrincipal,
+      current_value: newCurrent,
+      note: updatedNote,
+    });
+    return { investment: updated || existing, isNew: false };
+  } else {
+    const created = await createInvestment(db, userId, {
+      name: ticker,
+      institution,
+      asset_type: assetType,
+      principal: data.amount,
+      current_value: data.amount,
+      note: noteContent || null,
+    });
+    return { investment: created, isNew: true };
+  }
+}
+
 export async function upsertDimeInvestment(
   db: D1Database,
   userId: string,
@@ -188,34 +239,6 @@ export async function upsertDimeInvestment(
     note?: string;
   }
 ): Promise<{ investment: Investment; isNew: boolean }> {
-  const ticker = data.name.trim();
-  const existing = await db
-    .prepare('SELECT * FROM investments WHERE user_id = ? AND institution = ? AND name = ?')
-    .bind(userId, 'Dime!', ticker)
-    .first<Investment>();
-
-  if (existing) {
-    const newPrincipal = Math.round((existing.principal + data.amount) * 100) / 100;
-    const newCurrent = Math.round((existing.current_value + data.amount) * 100) / 100;
-    const noteExtra = data.note ? ` | ${data.note}` : '';
-    const updatedNote = (existing.note ? `${existing.note}${noteExtra}` : data.note || null)?.slice(0, 500);
-
-    const updated = await updateInvestment(db, existing.id, userId, {
-      principal: newPrincipal,
-      current_value: newCurrent,
-      note: updatedNote,
-    });
-    return { investment: updated || existing, isNew: false };
-  } else {
-    const created = await createInvestment(db, userId, {
-      name: ticker,
-      institution: 'Dime!',
-      asset_type: 'หุ้น (Stock)',
-      principal: data.amount,
-      current_value: data.amount,
-      note: data.note || null,
-    });
-    return { investment: created, isNew: true };
-  }
+  return upsertStockInvestment(db, userId, { ...data, institution: 'Dime!' });
 }
 

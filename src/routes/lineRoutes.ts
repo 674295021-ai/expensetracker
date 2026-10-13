@@ -18,8 +18,9 @@ import {
   unlinkLineUser,
 } from '../db/line';
 import { createTransaction, getUserSummary, getMonthlyExpense } from '../db/transactions';
-import { upsertDimeInvestment } from '../db/investments';
+import { upsertDimeInvestment, upsertStockInvestment, getInvestments } from '../db/investments';
 import { getAllUsers } from '../db/users';
+import { syncPortfolioStockPrices } from '../services/stock';
 
 // Helper to format date in Thai format: "06 ต.ค. 2569"
 function formatThaiDate(dateStr?: string): string {
@@ -199,31 +200,45 @@ export async function handleLineRoutes(
             }
 
             if (slipResult.is_slip && slipResult.amount && slipResult.amount > 0) {
-              const isDime = slipResult.slip_type === 'dime' || /dime/i.test(slipResult.bank || slipResult.note || '');
+              const isInvestment =
+                slipResult.slip_type === 'dime' ||
+                slipResult.slip_type === 'investment' ||
+                /dime|streaming|settrade|innovestx|หุ้น|หลักทรัพย์|กองทุน/i.test(
+                  `${slipResult.bank || ''} ${slipResult.note || ''} ${slipResult.recipient || ''} ${slipResult.institution || ''}`
+                );
               const txDate = slipResult.date || new Date().toISOString().split('T')[0];
               const thaiDateText = formatThaiDate(txDate);
 
-              if (isDime) {
-                // --- กรณีสลิป Dime! (การลงทุน/หุ้น/กองทุน) ---
-                const ticker = slipResult.ticker || slipResult.asset_name || 'US Stock';
+              if (isInvestment) {
+                // --- กรณีสลิปการลงทุน / หุ้น / กองทุน (Dime! หรือ Streaming) ---
+                let institution = slipResult.institution || 'Dime!';
+                if (/streaming|settrade/i.test(`${slipResult.bank || ''} ${slipResult.note || ''} ${slipResult.recipient || ''} ${institution}`)) {
+                  institution = 'Streaming';
+                } else if (/dime/i.test(`${slipResult.bank || ''} ${slipResult.note || ''} ${institution}`)) {
+                  institution = 'Dime!';
+                }
+
+                const ticker = slipResult.ticker || slipResult.asset_name || (institution === 'Streaming' ? 'Thai Stock' : 'US Stock');
                 const sharesText = slipResult.shares ? `${slipResult.shares}` : '-';
                 const priceText = slipResult.price_per_share ? slipResult.price_per_share.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-';
                 const totalAmount = slipResult.amount;
 
-                let dimeNote = `Dime! ${ticker}`;
+                let investNote = `${institution} ${ticker}`;
                 if (slipResult.shares && slipResult.price_per_share) {
-                  dimeNote += ` (${slipResult.shares} หุ้น @ ${priceText})`;
+                  investNote += ` (${slipResult.shares} หุ้น @ ${priceText})`;
                 }
 
-                console.log(`[LINE Webhook][Dime] Step 3: Saving Dime investment (${ticker}, ${totalAmount} THB) to D1...`);
+                console.log(`[LINE Webhook][Investment] Step 3: Saving ${institution} investment (${ticker}, ${totalAmount} THB) to D1...`);
                 try {
                   // 1. บันทึก/อัปเดตลงตาราง investments
-                  await upsertDimeInvestment(env.DB, linkedUser.user_id, {
+                  await upsertStockInvestment(env.DB, linkedUser.user_id, {
                     name: ticker,
+                    institution,
+                    asset_type: institution === 'Streaming' ? 'หุ้นไทย (Thai Stock)' : 'หุ้น (Stock)',
                     shares: slipResult.shares,
                     price: slipResult.price_per_share,
                     amount: totalAmount,
-                    note: dimeNote,
+                    note: investNote,
                   });
 
                   // 2. บันทึกประวัติธุรกรรมซื้อขายลงตาราง transactions เพื่อติดตามกระแสเงิน
@@ -231,12 +246,12 @@ export async function handleLineRoutes(
                     type: 'expense',
                     category: 'เงินออม/เงินลงทุน',
                     amount: totalAmount,
-                    note: dimeNote,
+                    note: investNote,
                     transaction_date: txDate,
                   });
                 } catch (d1Err: unknown) {
                   const d1ErrMsg = d1Err instanceof Error ? d1Err.message : String(d1Err);
-                  console.error('[LINE Webhook][Dime] Step 3 Failed (D1 Database error):', d1ErrMsg);
+                  console.error('[LINE Webhook][Investment] Step 3 Failed (D1 Database error):', d1ErrMsg);
                   await replyLineMessage(
                     replyToken,
                     [{ type: 'text', text: `❌ เกิดข้อผิดพลาดในการบันทึกฐานข้อมูล D1: ${d1ErrMsg}` }],
@@ -247,9 +262,10 @@ export async function handleLineRoutes(
 
                 const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
 
-                const dimeReplyText =
-                  `📈 บันทึกการลงทุน Dime! สำเร็จ\n` +
+                const investReplyText =
+                  `📈 บันทึกการลงทุน ${institution} สำเร็จ\n` +
                   `🔹 สินทรัพย์: ${ticker}\n` +
+                  `🏛️ สถาบัน/แอป: ${institution}\n` +
                   (slipResult.shares ? `🔹 จำนวน: ${slipResult.shares} หุ้น\n` : '') +
                   (slipResult.price_per_share ? `🔹 ราคาต่อหุ้น: ฿${slipResult.price_per_share.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` : '') +
                   `💵 ยอดรวม: ฿${totalAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
@@ -257,8 +273,8 @@ export async function handleLineRoutes(
                   `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
                   `💼 บันทึกเข้าพอร์ต Investments เรียบร้อยแล้ว ✅`;
 
-                await replyLineMessage(replyToken, [{ type: 'text', text: dimeReplyText }], lineToken);
-                console.log(`[LINE Webhook][Dime] Step 4 Success: Replied with Dime investment summary.`);
+                await replyLineMessage(replyToken, [{ type: 'text', text: investReplyText }], lineToken);
+                console.log(`[LINE Webhook][Investment] Step 4 Success: Replied with ${institution} investment summary.`);
               } else {
                 // --- กรณีสลิปโอนเงินทั่วไป ---
                 const txType: 'income' | 'expense' = slipResult.type === 'income' ? 'income' : 'expense';
@@ -354,9 +370,20 @@ export async function handleLineRoutes(
               continue;
             }
 
-            // 2. สอบถามข้อมูลสรุป
-            if (/^(?:สรุป|ยอด|summary|balance|รายงาน)/.test(text)) {
-              const linkedUser = await getLineUser(env.DB, lineUserId);
+            // 2. สอบถามข้อมูลสรุปยอดเงิน และพอร์ตการลงทุน: "พอร์ต", "สรุป", "port", "portfolio"
+            if (/^(?:พอร์ต|พอร์ท|port|portfolio|สรุป|ยอด|summary|balance|รายงาน)/i.test(text)) {
+              let linkedUser = await getLineUser(env.DB, lineUserId);
+              if (!linkedUser) {
+                const allUsers = await getAllUsers(env.DB);
+                if (allUsers.length > 0) {
+                  const primaryUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
+                  await env.DB.prepare(
+                    'INSERT INTO line_users (line_user_id, user_id, display_name) VALUES (?, ?, ?) ON CONFLICT(line_user_id) DO UPDATE SET user_id = excluded.user_id'
+                  ).bind(lineUserId, primaryUser.id, 'LINE User').run();
+                  linkedUser = { line_user_id: lineUserId, user_id: primaryUser.id, display_name: 'LINE User', picture_url: null };
+                }
+              }
+
               if (!linkedUser) {
                 await replyLineMessage(
                   replyToken,
@@ -366,28 +393,60 @@ export async function handleLineRoutes(
                 continue;
               }
 
-              const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
-              if (!summaryData) {
-                await replyLineMessage(
-                  replyToken,
-                  [{ type: 'text', text: '⚠️ ยังไม่มีข้อมูลรายรับ-รายจ่ายในระบบครับ' }],
-                  lineToken
-                );
-                continue;
+              // ซิงค์ราคาหุ้น Real-time ล่าสุดถ้ามี STOCK_API_KEY
+              if (env.STOCK_API_KEY) {
+                try {
+                  await syncPortfolioStockPrices(env.DB, linkedUser.user_id, env.STOCK_API_KEY);
+                } catch (stockErr) {
+                  console.warn('[LINE Text] Failed to sync stock prices for summary:', stockErr);
+                }
               }
 
-              const income = summaryData.total_income.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              const expense = summaryData.total_expense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              const balance = summaryData.balance.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
+              const portfolio = await getInvestments(env.DB, linkedUser.user_id);
+
+              const income = (summaryData?.total_income ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const expense = (summaryData?.total_expense ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const balance = (summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+              const invTotalVal = portfolio.total_current_value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const invPrincipal = portfolio.total_principal.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              const invPl = portfolio.total_profit_loss;
+              const invPlSign = invPl >= 0 ? '+' : '';
+              const invPlText = `${invPlSign}฿${invPl.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+              const invPlPctText = `${invPlSign}${portfolio.total_profit_loss_pct.toFixed(2)}%`;
+              const netWorth = ((summaryData?.balance ?? 0) + portfolio.total_current_value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+              let stockLines = '';
+              if (portfolio.investments && portfolio.investments.length > 0) {
+                stockLines = '\n📋 รายการสินทรัพย์:\n' + portfolio.investments.map((inv) => {
+                  const pl = inv.profit_loss ?? 0;
+                  const s = pl >= 0 ? '+' : '';
+                  const pct = (inv.profit_loss_pct ?? 0).toFixed(2);
+                  return `• ${inv.name} (${inv.institution}): ฿${inv.current_value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${s}฿${pl.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ${s}${pct}%)`;
+                }).join('\n');
+              } else {
+                stockLines = '\n📋 รายการสินทรัพย์: ยังไม่มีสินทรัพย์ในพอร์ต';
+              }
+
+              const replyText =
+                `📊 สรุปสถานะการเงิน & พอร์ตการลงทุน\n\n` +
+                `💰 [กระเป๋าเงิน]\n` +
+                `• รายรับทั้งหมด: ฿${income}\n` +
+                `• รายจ่ายทั้งหมด: ฿${expense}\n` +
+                `• เงินคงเหลือสุทธิ: ฿${balance}\n\n` +
+                `📈 [พอร์ตการลงทุน]\n` +
+                `• มูลค่าพอร์ตปัจจุบัน: ฿${invTotalVal}\n` +
+                `• เงินต้นรวม: ฿${invPrincipal}\n` +
+                `• กำไร/ขาดทุนรวม: ${invPlText} (${invPlPctText})` +
+                `${stockLines}\n\n` +
+                `💎 [ความมั่งคั่งสุทธิ (Net Worth)]\n` +
+                `• รวมความมั่งคั่งสุทธิ: ฿${netWorth}\n\n` +
+                `🔗 ดูรายละเอียด: ${webUrl}`;
 
               await replyLineMessage(
                 replyToken,
-                [
-                  {
-                    type: 'text',
-                    text: `📊 สรุปการเงินของคุณ:\n\n💰 รายรับทั้งหมด: ฿${income}\n💸 รายจ่ายทั้งหมด: ฿${expense}\n💵 ยอดคงเหลือสุทธิ: ฿${balance}\n\n🔗 ดูรายละเอียดเพิ่มเติมได้ที่: ${webUrl}`,
-                  },
-                ],
+                [{ type: 'text', text: replyText }],
                 lineToken
               );
               continue;
@@ -399,7 +458,7 @@ export async function handleLineRoutes(
               [
                 {
                   type: 'text',
-                  text: '👋 สวัสดีครับ! ระบบ ExpenseTracker รองรับ:\n\n📷 ส่งภาพสลิป → บันทึกรายจ่ายอัตโนมัติ\n📊 พิมพ์ "สรุป" → ดูยอดรายรับ-รายจ่าย\n🔗 พิมพ์ "LINK <รหัส>" → เชื่อมต่อบัญชีเว็บ\n\n💡 เยี่ยมชมแดชบอร์ดเพิ่มเติมได้ที่: ' + webUrl,
+                  text: '👋 สวัสดีครับ! ระบบ ExpenseTracker รองรับ:\n\n📷 ส่งภาพสลิป → บันทึกรายจ่าย / หุ้นเข้าพอร์ตอัตโนมัติ\n📊 พิมพ์ "พอร์ต" หรือ "สรุป" → ดูยอดเงินและพอร์ตลงทุน\n🔗 พิมพ์ "LINK <รหัส>" → เชื่อมต่อบัญชีเว็บ\n\n💡 เยี่ยมชมแดชบอร์ดเพิ่มเติมได้ที่: ' + webUrl,
                 },
               ],
               lineToken

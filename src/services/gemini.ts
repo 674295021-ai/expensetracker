@@ -4,7 +4,7 @@ import { InvestmentPortfolioSummary } from '../db/investments';
 
 export interface SlipOCRResult {
   is_slip: boolean;
-  slip_type?: 'transfer' | 'dime';
+  slip_type?: 'transfer' | 'dime' | 'investment';
   amount?: number;
   type?: 'expense' | 'income';
   category?: string;
@@ -15,7 +15,8 @@ export interface SlipOCRResult {
   bank?: string;
   note?: string;
   raw_text?: string;
-  // Dime! specific investment fields:
+  // Dime! & Streaming stock/investment fields:
+  institution?: string;
   asset_name?: string;
   ticker?: string;
   shares?: number;
@@ -227,14 +228,14 @@ export async function parseSlipWithGeminiVision(
   mimeType: string = 'image/jpeg'
 ): Promise<SlipOCRResult> {
   const prompt = `
-คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปทางการเงินไทยอัจฉริยะ (Thai Financial Slip & Dime Investment Scanner)
+คุณเป็นระบบ OCR ตรวจจับและอ่านสลิปทางการเงินไทยอัจฉริยะ (Thai Financial Slip & Stock/Investment Scanner: Dime!, Streaming ฯลฯ)
 โปรดอ่านรูปภาพนี้อย่างละเอียด และจำแนกว่าเป็น:
 1) "transfer" = สลิปโอนเงินธนาคารทั่วไป (เช่น KBank, SCB, Krungthai, BBL, TTB, GSB, TrueMoney, PromptPay ฯลฯ)
-2) "dime" = สลิปหรือหลักฐานการซื้อขายหุ้น/กองทุน/สินทรัพย์จากแอป Dime! (KKP / Dime)
+2) "dime" หรือ "investment" = สลิปหรือหลักฐานการซื้อขายหุ้น/กองทุน/สินทรัพย์จากแอป Dime! หรือ Streaming (Settrade Streaming / บัวหลวง / กสิกร / InnovestX ฯลฯ)
 
 กติกาการสกัดข้อมูล:
 1. ตรวจสอบว่ารูปนี้คือสลิปโอนเงินหรือสลิปการลงทุนหรือไม่ (is_slip: true/false)
-2. จำแนกประเภทสลิป (slip_type: "transfer" หรือ "dime")
+2. จำแนกประเภทสลิป (slip_type: "transfer", "dime", หรือ "investment")
 
 --- กรณีที่ 1: สลิปโอนเงินทั่วไป (slip_type = "transfer") ---
 - amount: ยอดเงินโอน (ตัวเลขทศนิยม เช่น 350.00)
@@ -255,15 +256,16 @@ export async function parseSlipWithGeminiVision(
 - bank: ธนาคาร เช่น KBank, SCB, KTB, BBL, TTB, GSB, PromptPay
 - note: หมายเหตุ/ข้อความช่วยจำถ้ามี
 
---- กรณีที่ 2: สลิปการลงทุน Dime! (slip_type = "dime") ---
-- ticker: สัญลักษณ์หุ้นหรือชื่อย่อสินทรัพย์ เช่น "AAPL", "NVDA", "TSLA", "DIME-US500", "TLG"
+--- กรณีที่ 2: สลิปการลงทุนหุ้น/กองทุน (slip_type = "dime" หรือ "investment") ---
+- institution: สถาบันหรือแอป เช่น "Dime!" หรือ "Streaming" (หรือชื่อโบรกเกอร์ตามที่ปรากฏในสลิป)
+- ticker: สัญลักษณ์หุ้นหรือชื่อย่อสินทรัพย์ เช่น "AAPL", "NVDA", "TSLA", "VOO", "DELTA", "PTT", "CPALL", "DIME-US500"
 - asset_name: ชื่อเต็มของหุ้นหรือสินทรัพย์
-- shares: จำนวนหุ้น/หน่วยที่ซื้อ (ตัวเลขทศนิยม เช่น 0.25 หรือ 10)
+- shares: จำนวนหุ้น/หน่วยที่ซื้อหรือขาย (ตัวเลขทศนิยม เช่น 0.25, 10, 100)
 - price_per_share: ราคาต่อหุ้นหรือราคาเฉลี่ยที่ซื้อ (ตัวเลขทศนิยม)
 - amount: ยอดเงินรวมที่ลงทุน (ตัวเลขทศนิยม)
 - date: วันที่ทำรายการ (YYYY-MM-DD)
 - time: เวลาทำรายการ (HH:mm)
-- note: รายละเอียดเพิ่มเติม เช่น "ซื้อสำเร็จผ่าน Dime!"
+- note: รายละเอียดเพิ่มเติม เช่น "ซื้อสำเร็จผ่าน Streaming" หรือ "ซื้อสำเร็จผ่าน Dime!"
 
 ตอบกลับเป็น JSON เท่านั้น (Strict JSON Output):
 ตัวอย่างกรณีสลิปทั่วไป:
@@ -281,10 +283,11 @@ export async function parseSlipWithGeminiVision(
   "note": "ค่าอาหารกลางวัน"
 }
 
-ตัวอย่างกรณีสลิป Dime!:
+ตัวอย่างกรณีสลิป Dime! / Streaming:
 {
   "is_slip": true,
-  "slip_type": "dime",
+  "slip_type": "investment",
+  "institution": "Dime!",
   "ticker": "AAPL",
   "asset_name": "Apple Inc. (AAPL)",
   "shares": 0.5,

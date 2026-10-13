@@ -8,6 +8,7 @@ import {
   deleteInvestment,
   CreateInvestmentInput,
 } from '../db/investments';
+import { syncPortfolioStockPrices } from '../services/stock';
 
 export async function handleInvestmentRoutes(
   request: Request,
@@ -21,8 +22,25 @@ export async function handleInvestmentRoutes(
 
   // GET /api/investments - Get portfolio list and analytics breakdown
   if (path === '/api/investments' && method === 'GET') {
+    if (env.STOCK_API_KEY) {
+      try {
+        await syncPortfolioStockPrices(env.DB, userId, env.STOCK_API_KEY);
+      } catch (err) {
+        console.warn('Failed to sync stock prices:', err);
+      }
+    }
     const portfolio = await getInvestments(env.DB, userId);
     return jsonSuccess(portfolio);
+  }
+
+  // POST /api/investments/sync - Explicitly sync real-time stock prices
+  if (path === '/api/investments/sync' && method === 'POST') {
+    if (!env.STOCK_API_KEY) {
+      return jsonError('STOCK_API_KEY is not configured', 'CONFIG_ERROR', 400);
+    }
+    await syncPortfolioStockPrices(env.DB, userId, env.STOCK_API_KEY);
+    const portfolio = await getInvestments(env.DB, userId);
+    return jsonSuccess({ message: 'Synced real-time stock prices successfully', portfolio });
   }
 
   // POST /api/investments - Add new asset
