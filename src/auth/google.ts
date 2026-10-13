@@ -4,7 +4,7 @@ import { UserRole } from '../types';
 
 export const ADMIN_EMAILS: ReadonlyArray<string> = [
   'seree999@gmail.com',
-  '674295021@parichat.skru.ac.th',
+  'akbarkhansarikhan@gmail.com',
 ];
 
 export function determineUserRole(email: string): UserRole {

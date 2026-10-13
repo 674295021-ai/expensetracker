@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 // 1. Role Authorization Logic
 const ADMIN_EMAILS = [
   'seree999@gmail.com',
-  '674295021@parichat.skru.ac.th',
+  'akbarkhansarikhan@gmail.com',
 ];
 
 function determineUserRole(email) {
@@ -172,9 +172,9 @@ test('Admin Role Assignment Rules', async (t) => {
     assert.equal(determineUserRole('  seree999@gmail.com  '), 'admin');
   });
 
-  await t.test('assigns admin to 674295021@parichat.skru.ac.th regardless of case', () => {
-    assert.equal(determineUserRole('674295021@parichat.skru.ac.th'), 'admin');
-    assert.equal(determineUserRole('674295021@PARICHAT.SKRU.AC.TH'), 'admin');
+  await t.test('assigns admin to akbarkhansarikhan@gmail.com regardless of case', () => {
+    assert.equal(determineUserRole('akbarkhansarikhan@gmail.com'), 'admin');
+    assert.equal(determineUserRole('AKBARKHANSARIKHAN@GMAIL.COM'), 'admin');
   });
 
   await t.test('assigns regular user to all other emails', () => {
