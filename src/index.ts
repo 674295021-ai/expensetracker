@@ -15,6 +15,7 @@ import { handleLineRoutes } from './routes/lineRoutes';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    console.log(">>> WORKER RECEIVED REQUEST:", request.url, request.method);
     const url = new URL(request.url);
 
     // 1. Handle CORS Preflight requests
@@ -24,6 +25,11 @@ export default {
 
     try {
       // 2. Route API Requests
+      // Support both /api/line/webhook and direct /webhook or /line/webhook
+      if (url.pathname === '/api/line/webhook' || url.pathname === '/webhook' || url.pathname === '/line/webhook') {
+        return await handleLineRoutes(request, env, url, null);
+      }
+
       if (url.pathname.startsWith('/api/')) {
         // Public or semi-public auth routes
         if (url.pathname.startsWith('/api/auth/')) {
@@ -40,9 +46,6 @@ export default {
 
         // LINE Bot Webhook (signature authenticated) & Web LINE linking APIs
         if (url.pathname.startsWith('/api/line/')) {
-          if (url.pathname === '/api/line/webhook') {
-            return await handleLineRoutes(request, env, url, null);
-          }
           const authResult = await requireAuth(request, env);
           if ('errorResponse' in authResult) {
             return authResult.errorResponse;
