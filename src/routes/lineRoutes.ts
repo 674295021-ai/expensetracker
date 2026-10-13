@@ -199,23 +199,34 @@ export async function handleLineRoutes(
               }
 
               console.log(`[LINE Webhook][Dime] Step 3: Saving Dime investment (${ticker}, ${totalAmount} THB) to D1...`);
-              // 1. บันทึก/อัปเดตลงตาราง investments
-              await upsertDimeInvestment(env.DB, linkedUser.user_id, {
-                name: ticker,
-                shares: slipResult.shares,
-                price: slipResult.price_per_share,
-                amount: totalAmount,
-                note: dimeNote,
-              });
+              try {
+                // 1. บันทึก/อัปเดตลงตาราง investments
+                await upsertDimeInvestment(env.DB, linkedUser.user_id, {
+                  name: ticker,
+                  shares: slipResult.shares,
+                  price: slipResult.price_per_share,
+                  amount: totalAmount,
+                  note: dimeNote,
+                });
 
-              // 2. บันทึกประวัติธุรกรรมซื้อขายลงตาราง transactions เพื่อติดตามกระแสเงิน
-              await createTransaction(env.DB, linkedUser.user_id, {
-                type: 'expense',
-                category: 'เงินออม/เงินลงทุน',
-                amount: totalAmount,
-                note: dimeNote,
-                transaction_date: txDate,
-              });
+                // 2. บันทึกประวัติธุรกรรมซื้อขายลงตาราง transactions เพื่อติดตามกระแสเงิน
+                await createTransaction(env.DB, linkedUser.user_id, {
+                  type: 'expense',
+                  category: 'เงินออม/เงินลงทุน',
+                  amount: totalAmount,
+                  note: dimeNote,
+                  transaction_date: txDate,
+                });
+              } catch (d1Err: unknown) {
+                const d1ErrMsg = d1Err instanceof Error ? d1Err.message : String(d1Err);
+                console.error('[LINE Webhook][Dime] Step 3 Failed (D1 Database error):', d1ErrMsg);
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: `❌ เกิดข้อผิดพลาดในการบันทึกฐานข้อมูล D1: ${d1ErrMsg}` }],
+                  lineToken
+                );
+                continue;
+              }
 
               // 3. ส่งข้อความตอบกลับสรุปการลงทุน Dime!
               console.log(`[LINE Webhook][Dime] Step 4: Replying Dime confirmation to LINE...`);
@@ -238,17 +249,29 @@ export async function handleLineRoutes(
               if (slipResult.bank) note += ` [${slipResult.bank}]`;
 
               console.log(`[LINE Webhook][Transfer] Step 3: Inserting transaction (${txType}, ${slipResult.amount} THB) to D1...`);
-              // 1. บันทึกลงตาราง transactions
-              await createTransaction(env.DB, linkedUser.user_id, {
-                type: txType,
-                category: txCategory,
-                amount: slipResult.amount,
-                note: note.trim() || null,
-                transaction_date: txDate,
-              });
+              let currentMonthExpense = 0;
+              try {
+                // 1. บันทึกลงตาราง transactions
+                await createTransaction(env.DB, linkedUser.user_id, {
+                  type: txType,
+                  category: txCategory,
+                  amount: slipResult.amount,
+                  note: note.trim() || null,
+                  transaction_date: txDate,
+                });
 
-              // 2. คำนวณยอดรวมรายจ่ายเดือนนี้จาก D1
-              const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
+                // 2. คำนวณยอดรวมรายจ่ายเดือนนี้จาก D1
+                currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
+              } catch (d1Err: unknown) {
+                const d1ErrMsg = d1Err instanceof Error ? d1Err.message : String(d1Err);
+                console.error('[LINE Webhook][Transfer] Step 3 Failed (D1 Database error):', d1ErrMsg);
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: `❌ เกิดข้อผิดพลาดในการบันทึกฐานข้อมูล D1: ${d1ErrMsg}` }],
+                  lineToken
+                );
+                continue;
+              }
 
               // 3. ส่งข้อความตอบกลับสรุปตามรูปแบบที่กำหนด
               console.log(`[LINE Webhook][Transfer] Step 4: Replying transfer confirmation to LINE...`);
