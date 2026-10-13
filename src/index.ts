@@ -15,7 +15,7 @@ import { handleLineRoutes } from './routes/lineRoutes';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    console.log(">>> ANY REQUEST RECEIVED:", request.method, request.url);
+    console.log(">>> [LINE EVENT INCOMING]:", request.method, request.url);
     const url = new URL(request.url);
 
     // 1. Handle CORS Preflight requests
@@ -23,16 +23,23 @@ export default {
       return handleOptions();
     }
 
+    // Bypass & Instant 200 OK for LINE Webhook routes on POST / GET
+    if (
+      url.pathname === '/api/line/webhook' ||
+      url.pathname === '/webhook' ||
+      url.pathname === '/line/webhook'
+    ) {
+      console.log(">>> [LINE WEBHOOK BYPASS HIT]:", request.method, url.pathname);
+      // Run background processing for image/event if needed, but return 200 OK immediately
+      ctx.waitUntil(
+        handleLineRoutes(request.clone(), env, url, null).catch((err) => {
+          console.error(">>> [LINE BACKGROUND ERROR]:", err);
+        })
+      );
+      return new Response("OK", { status: 200 });
+    }
+
     try {
-      // 2. Route API Requests
-      // Instant 200 OK for /api/line/webhook, /webhook, or /line/webhook
-      if (url.pathname === '/api/line/webhook' || url.pathname === '/webhook' || url.pathname === '/line/webhook') {
-        // If GET, return 200 OK immediately
-        if (request.method === 'GET') {
-          return new Response('OK', { status: 200 });
-        }
-        return await handleLineRoutes(request, env, url, null);
-      }
 
       if (url.pathname.startsWith('/api/')) {
         // Public or semi-public auth routes
