@@ -23,23 +23,15 @@ export default {
       return handleOptions();
     }
 
-    // Bypass & Instant 200 OK for LINE Webhook routes on POST / GET
-    if (
-      url.pathname === '/api/line/webhook' ||
-      url.pathname === '/webhook' ||
-      url.pathname === '/line/webhook'
-    ) {
-      console.log(">>> [LINE WEBHOOK BYPASS HIT]:", request.method, url.pathname);
-      // Run background processing for image/event if needed, but return 200 OK immediately
-      ctx.waitUntil(
-        handleLineRoutes(request.clone(), env, url, null).catch((err) => {
-          console.error(">>> [LINE BACKGROUND ERROR]:", err);
-        })
-      );
-      return new Response("OK", { status: 200 });
-    }
-
     try {
+      // 2. LINE Bot Webhook routes (handles verification and full event pipeline)
+      if (
+        url.pathname === '/api/line/webhook' ||
+        url.pathname === '/webhook' ||
+        url.pathname === '/line/webhook'
+      ) {
+        return await handleLineRoutes(request, env, url, null);
+      }
 
       if (url.pathname.startsWith('/api/')) {
         // Public or semi-public auth routes
