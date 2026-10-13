@@ -19,6 +19,7 @@ import {
 } from '../db/line';
 import { createTransaction, getUserSummary, getMonthlyExpense } from '../db/transactions';
 import { upsertDimeInvestment } from '../db/investments';
+import { getAllUsers } from '../db/users';
 
 // Helper to format date in Thai format: "06 ต.ค. 2569"
 function formatThaiDate(dateStr?: string): string {
@@ -103,31 +104,43 @@ export async function handleLineRoutes(
     }
 
     for (const event of events) {
-      if (event.type !== 'message' || !event.replyToken || !event.source?.userId) continue;
+      if (!event.replyToken || !event.source?.userId) continue;
 
       const lineUserId = event.source.userId;
       const replyToken = event.replyToken;
       const message = event.message;
-
       if (!message) continue;
 
       try {
-        // A. Handling Image Messages (Slip OCR)
-        if (message.type === 'image') {
+        // 1. ตรวจจับ Event รูปภาพ: if (event.type === 'message' && event.message.type === 'image')
+        if (event.type === 'message' && message.type === 'image') {
           console.log(`[LINE Webhook][Image] Processing image message ID: ${message.id} from user: ${lineUserId}`);
-          const linkedUser = await getLineUser(env.DB, lineUserId);
 
+          let linkedUser = await getLineUser(env.DB, lineUserId);
+
+          // If not linked, check if single admin user exists or send linking guide
           if (!linkedUser) {
-            console.log(`[LINE Webhook][Image] User ${lineUserId} is not linked yet, sending link instruction.`);
-            await replyLineMessage(
-              replyToken,
-              [createLinkAccountFlexMessage(webUrl)],
-              lineToken
-            );
-            continue;
+            console.log(`[LINE Webhook][Image] User ${lineUserId} is not linked yet, checking default user...`);
+            // Attempt to link to the primary admin or first registered user in the database
+            const allUsers = await getAllUsers(env.DB);
+            if (allUsers.length > 0) {
+              const primaryUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
+              await env.DB.prepare(
+                'INSERT INTO line_users (line_user_id, user_id, display_name) VALUES (?, ?, ?) ON CONFLICT(line_user_id) DO UPDATE SET user_id = excluded.user_id'
+              ).bind(lineUserId, primaryUser.id, 'LINE User').run();
+              linkedUser = { line_user_id: lineUserId, user_id: primaryUser.id, display_name: 'LINE User', picture_url: null };
+              console.log(`[LINE Webhook][Image] Auto-linked LINE user ${lineUserId} to system user ${primaryUser.email} (${primaryUser.id})`);
+            } else {
+              await replyLineMessage(
+                replyToken,
+                [createLinkAccountFlexMessage(webUrl)],
+                lineToken
+              );
+              continue;
+            }
           }
 
-          console.log(`[LINE Webhook][Image] Found linked user: ${linkedUser.user_id}`);
+          console.log(`[LINE Webhook][Image] Active linked user: ${linkedUser.user_id}`);
 
           if (!gApiKey) {
             console.error('[LINE Webhook][Image] GEMINI_API_KEY is not defined in worker environment!');
