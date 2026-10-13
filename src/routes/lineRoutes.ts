@@ -47,6 +47,9 @@ export async function handleLineRoutes(
   const path = url.pathname;
   const method = request.method;
 
+  // Log incoming request headers at the very first line of the handler
+  console.log("Incoming request headers:", JSON.stringify(Object.fromEntries(request.headers)));
+
   const channelSecret = env.LINE_CHANNEL_SECRET;
   const channelAccessToken = env.LINE_CHANNEL_ACCESS_TOKEN;
   const geminiApiKey = env.GEMINI_API_KEY;
@@ -54,8 +57,8 @@ export async function handleLineRoutes(
 
   // Guard: LINE webhook requires credentials
   if (path === '/api/line/webhook' && (!channelSecret || !channelAccessToken)) {
-    console.error('[LINE Webhook] LINE credentials not configured in env/secrets');
-    return new Response('LINE credentials not configured', { status: 200 });
+    console.error('[LINE Webhook] LINE credentials not configured in env/secrets: channelSecret=' + !!channelSecret + ', channelAccessToken=' + !!channelAccessToken);
+    return new Response('LINE credentials not configured', { status: 500 });
   }
 
   // Type-narrowed aliases for use inside the webhook handler blocks
@@ -77,9 +80,8 @@ export async function handleLineRoutes(
 
     const isValid = await verifyLineSignature(rawBody, signature, secret);
     if (!isValid) {
-      console.warn('[LINE Webhook] Invalid signature attempt. Check LINE_CHANNEL_SECRET.');
-      // Return 200 to prevent LINE platform from disabling webhook on signature probe
-      return new Response('Invalid signature', { status: 200 });
+      console.error(`Signature verification failed: receivedSignature=${signature}, secretConfigured=${!!secret}`);
+      return new Response('Invalid signature', { status: 401 });
     }
 
     let payload: { events?: LineWebhookEvent[] };
