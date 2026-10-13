@@ -1252,6 +1252,173 @@
         </div>
       </div>
     </div>
+  <!-- TRIP DETAIL & TIMELINE MODAL -->
+  <div id="trip-detail-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-5 sm:p-7 w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-floating border border-slate-100 relative animate-fade-in space-y-5">
+      <!-- Header -->
+      <div class="flex items-start justify-between pb-3 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 id="trip-detail-name" class="font-bold text-lg text-slate-800">✈️ รายละเอียดทริป</h3>
+            <span id="trip-detail-status-badge"></span>
+          </div>
+          <p id="trip-detail-sub" class="text-xs text-slate-400 mt-0.5">จุดหมาย · วันที่</p>
+        </div>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-xl font-bold p-1">✕</button>
+      </div>
+
+      <!-- Budget & Progress Bar Card -->
+      <div class="bg-slate-50/80 rounded-2xl p-4 border border-slate-100 space-y-3">
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+          <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+            <div class="text-[11px] text-slate-400 font-medium">งบประมาณที่ตั้งไว้</div>
+            <div id="trip-detail-budget" class="text-sm sm:text-base font-bold font-mono text-slate-800 mt-0.5">฿0</div>
+          </div>
+          <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+            <div class="text-[11px] text-slate-400 font-medium">ใช้จ่ายไปแล้ว</div>
+            <div id="trip-detail-spent" class="text-sm sm:text-base font-bold font-mono text-indigo-600 mt-0.5">฿0</div>
+          </div>
+          <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+            <div class="text-[11px] text-slate-400 font-medium">คงเหลือ</div>
+            <div id="trip-detail-remaining" class="text-sm sm:text-base font-bold font-mono text-emerald-600 mt-0.5">฿0</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between text-xs text-slate-500 mb-1 font-medium">
+            <span id="trip-detail-pct-label">ความคืบหน้างบประมาณ</span>
+            <span id="trip-detail-pct-val" class="font-mono font-bold">0%</span>
+          </div>
+          <div class="w-full bg-slate-200/70 rounded-full h-2.5 overflow-hidden">
+            <div id="trip-detail-progress-bar" class="h-full rounded-full transition-all bg-indigo-500" style="width: 0%"></div>
+          </div>
+          <p id="trip-detail-over-warning" class="hidden text-xs text-rose-600 font-bold mt-1.5 flex items-center gap-1">
+            ⚠️ ใช้จ่ายเกินงบประมาณที่ตั้งไว้
+          </p>
+        </div>
+      </div>
+
+      <!-- Category Breakdown -->
+      <div>
+        <div class="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
+          <span>🏷️ สรุปค่าใช้จ่ายแยกหมวดหมู่</span>
+        </div>
+        <div id="trip-detail-categories" class="flex flex-wrap gap-2 text-xs">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Bill Splitting Tool -->
+      <div class="bg-indigo-50/70 border border-indigo-100 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div class="flex items-center gap-3 w-full sm:w-auto">
+          <div class="p-2.5 bg-indigo-100 text-indigo-700 rounded-xl text-lg font-bold">👥</div>
+          <div>
+            <div class="text-xs font-bold text-slate-800">ระบบหารบิล (Bill Splitting)</div>
+            <div class="text-[11px] text-slate-500">คำนวณยอดเฉลี่ยตามจำนวนผู้ร่วมทริป</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+          <div class="flex items-center gap-1.5">
+            <label class="text-xs text-slate-600 font-medium">จำนวน:</label>
+            <input type="number" id="trip-split-people" min="1" max="100" value="2" oninput="Features.updateBillSplit()" class="w-16 px-2.5 py-1.5 bg-white border border-indigo-200 rounded-xl text-center text-xs font-mono font-bold outline-none focus:ring-1 focus:ring-indigo-500">
+            <span class="text-xs text-slate-600">คน</span>
+          </div>
+          <div class="bg-white px-3.5 py-1.5 rounded-xl border border-indigo-200 text-right shadow-2xs">
+            <div class="text-[10px] text-slate-400 font-medium">คนละ</div>
+            <div id="trip-split-per-person" class="text-xs sm:text-sm font-black font-mono text-indigo-700">฿0.00</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="Features.openAddTripExpenseModal()" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition flex items-center gap-1.5">
+            <span>+ บันทึกค่าใช้จ่าย (เงินสด)</span>
+          </button>
+          <button type="button" onclick="Features.openLinkExpenseModal()" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
+            <span>🔗 ผูกรายการย้อนหลัง</span>
+          </button>
+        </div>
+        <button type="button" id="trip-toggle-status-btn" onclick="Features.toggleTripStatus()" class="px-3 py-2 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-medium transition">
+          เปลี่ยนสถานะทริป
+        </button>
+      </div>
+
+      <!-- Timeline & Expense List -->
+      <div class="space-y-3">
+        <h4 class="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+          <span>📜 ไทม์ไลน์ค่าใช้จ่ายในทริป</span>
+          <span id="trip-expenses-count" class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-mono">0 รายการ</span>
+        </h4>
+        <div id="trip-timeline-list" class="space-y-2 max-h-60 overflow-y-auto pr-1">
+          <!-- Populated by JS -->
+        </div>
+        <div id="trip-timeline-empty" class="hidden text-center py-8 text-slate-400 text-xs">
+          ยังไม่มีรายการค่าใช้จ่ายในทริปนี้ กดปุ่ม "+ บันทึกค่าใช้จ่าย" หรือ "ผูกรายการย้อนหลัง" เพื่อเริ่มต้น
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD TRIP CASH EXPENSE MODAL -->
+  <div id="trip-add-expense-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-7 w-full max-w-md shadow-floating border border-slate-100 relative animate-fade-in space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <h3 class="font-bold text-base text-slate-800 flex items-center gap-1.5">💵 บันทึกค่าใช้จ่ายทริป (เงินสด)</h3>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">หมวดหมู่ค่าใช้จ่าย *</label>
+          <select id="trip-exp-category" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500" required>
+            <option value="ที่พัก">🏨 ที่พัก / โรงแรม</option>
+            <option value="การเดินทาง">🚗 การเดินทาง / ตั๋วเครื่องบิน / น้ำมัน</option>
+            <option value="อาหารและเครื่องดื่ม">🍲 อาหารและเครื่องดื่ม</option>
+            <option value="ช้อปปิ้ง">🛍️ ช้อปปิ้ง / ของฝาก</option>
+            <option value="บันเทิง/สังสรรค์">🎟️ บันเทิง / กิจกรรม / ตั๋วเข้าชม</option>
+            <option value="อื่นๆ">🏷️ ค่าใช้จ่ายอื่นๆ ในทริป</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">จำนวนเงิน (THB) *</label>
+            <input type="number" id="trip-exp-amount" step="0.01" min="0.01" placeholder="0.00" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">วันที่ทำรายการ *</label>
+            <input type="date" id="trip-exp-date" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono outline-none focus:ring-1 focus:ring-indigo-500" required>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุ / รายละเอียด</label>
+          <input type="text" id="trip-exp-note" placeholder="เช่น ค่าข้าวซอย, ค่าเช่ามอเตอร์ไซค์" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs outline-none focus:ring-1 focus:ring-indigo-500">
+        </div>
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+          <button type="button" onclick="Features.handleAddTripExpense()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md transition">บันทึกค่าใช้จ่าย</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LINK EXISTING TRANSACTION MODAL -->
+  <div id="trip-link-modal" class="modal-window hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop-blur">
+    <div class="bg-white rounded-3xl p-6 sm:p-7 w-full max-w-lg shadow-floating border border-slate-100 relative animate-fade-in space-y-4">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div>
+          <h3 class="font-bold text-base text-slate-800 flex items-center gap-1.5">🔗 ผูกรายการรายจ่ายเข้าทริป</h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">เลือกรายการรายจ่ายทั่วไปที่มีอยู่แล้วเพื่อผูกเข้าทริปนี้</p>
+        </div>
+        <button class="modal-close text-slate-400 hover:text-slate-600 text-lg">✕</button>
+      </div>
+      <div id="trip-link-tx-list" class="space-y-2 max-h-72 overflow-y-auto pr-1">
+        <!-- Populated by JS with user's recent expense transactions -->
+      </div>
+      <div class="flex items-center justify-end pt-3 border-t border-slate-100">
+        <button type="button" class="modal-close px-4 py-2 rounded-xl text-xs text-slate-500 hover:bg-slate-100">ปิด</button>
+      </div>
+    </div>
   </div>
 
   <!-- App Core Scripts -->

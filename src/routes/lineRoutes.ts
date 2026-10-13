@@ -21,6 +21,7 @@ import { createTransaction, getUserSummary, getMonthlyExpense } from '../db/tran
 import { upsertDimeInvestment, upsertStockInvestment, getInvestments } from '../db/investments';
 import { getAllUsers } from '../db/users';
 import { syncPortfolioStockPrices } from '../services/stock';
+import { findActiveTripForDate, findTripByKeyword, createTripExpense, getTripById } from '../db/trips';
 
 // Helper to format date in Thai format: "06 ต.ค. 2569"
 function formatThaiDate(dateStr?: string): string {
@@ -302,10 +303,45 @@ export async function handleLineRoutes(
                   continue;
                 }
 
+                // ตรวจสอบการผูกเข้าทริปเดินทาง (Travel Mode) อัตโนมัติ:
+                // 1) หากมีชื่อทริป/แฮชแท็ก เช่น "เชียงใหม่", "#เชียงใหม่", "โรงแรม", "ตั๋วบิน" (จ่ายล่วงหน้าข้ามวัน)
+                // 2) หรือหากวันที่ทำรายการอยู่ในช่วงวันเดินทางของทริปที่กำลังเดินทางอยู่
+                let matchedTrip = null;
+                let tripRemaining = 0;
+                if (txType === 'expense') {
+                  const keyword = [slipResult.trip_hint, slipResult.note, slipResult.recipient].filter(Boolean).join(' ');
+                  if (keyword) {
+                    matchedTrip = await findTripByKeyword(env.DB, linkedUser.user_id, keyword);
+                  }
+                  if (!matchedTrip) {
+                    matchedTrip = await findActiveTripForDate(env.DB, linkedUser.user_id, txDate);
+                  }
+
+                  if (matchedTrip) {
+                    try {
+                      await createTripExpense(env.DB, matchedTrip.id, linkedUser.user_id, {
+                        category: txCategory,
+                        amount: txAmount,
+                        note: txNote,
+                        expense_date: txDate,
+                      });
+                      const tripDetail = await getTripById(env.DB, matchedTrip.id, linkedUser.user_id);
+                      tripRemaining = tripDetail?.trip.remaining_budget ?? 0;
+                      console.log(`[LINE Webhook][Trip] Auto-linked ${txAmount} THB to trip: ${matchedTrip.name}`);
+                    } catch (tripErr) {
+                      console.warn('[LINE Webhook][Trip] Failed to auto-link expense to trip:', tripErr);
+                    }
+                  }
+                }
+
                 const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
                 const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
 
                 const label = txType === 'income' ? 'รายรับ' : 'รายจ่าย';
+                const tripTag = matchedTrip
+                  ? `\n✈️ ผูกเข้าทริป: ${matchedTrip.name} (คงเหลืองบ ฿${tripRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                  : '';
+
                 const transferReplyText =
                   `✅ บันทึก${label}สำเร็จ\n` +
                   `💵 จำนวน: ฿${txAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
@@ -314,7 +350,9 @@ export async function handleLineRoutes(
                   (slipResult.bank ? `🏦 ธนาคาร: ${slipResult.bank}\n` : '') +
                   `📅 วันที่: ${thaiDateText}\n` +
                   `📊 รายจ่ายเดือนนี้รวม: ฿${currentMonthExpense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
-                  `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ✅`;
+                  `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` +
+                  tripTag +
+                  ` ✅`;
 
                 await replyLineMessage(replyToken, [{ type: 'text', text: transferReplyText }], lineToken);
                 console.log(`[LINE Webhook][Transfer] Step 4 Success: Replied with transfer summary.`);

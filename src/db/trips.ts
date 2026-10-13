@@ -172,3 +172,51 @@ export async function deleteTripExpense(
   const result = await db.prepare(query).bind(expenseId, userId).run();
   return (result.meta?.changes ?? 0) > 0;
 }
+
+export async function findActiveTripForDate(
+  db: D1Database,
+  userId: string,
+  date: string
+): Promise<Trip | null> {
+  const query = `
+    SELECT id, user_id, name, destination, start_date, end_date, budget, status
+    FROM trips
+    WHERE user_id = ? AND status = 'active' AND start_date <= ? AND end_date >= ?
+    ORDER BY start_date DESC
+    LIMIT 1;
+  `;
+  return await db.prepare(query).bind(userId, date, date).first<Trip>();
+}
+
+export async function findTripByKeyword(
+  db: D1Database,
+  userId: string,
+  keywordText: string
+): Promise<Trip | null> {
+  if (!keywordText) return null;
+  const query = `
+    SELECT id, user_id, name, destination, start_date, end_date, budget, status
+    FROM trips
+    WHERE user_id = ? AND status = 'active'
+    ORDER BY created_at DESC;
+  `;
+  const { results } = await db.prepare(query).bind(userId).all<Trip>();
+  const trips = results || [];
+  const text = keywordText.toLowerCase();
+
+  for (const t of trips) {
+    const cleanName = t.name.toLowerCase().replace(/#/g, '').trim();
+    const cleanDest = (t.destination || '').toLowerCase().replace(/#/g, '').trim();
+
+    if (cleanName && text.includes(cleanName)) return t;
+    if (cleanDest && text.includes(cleanDest)) return t;
+
+    // Check words in trip name (e.g. "เชียงใหม่" from "เที่ยวเชียงใหม่ 2026")
+    const words = cleanName.split(/\s+/);
+    for (const w of words) {
+      if (w.length >= 3 && text.includes(w)) return t;
+    }
+  }
+  return null;
+}
+

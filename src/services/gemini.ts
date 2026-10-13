@@ -22,6 +22,8 @@ export interface SlipOCRResult {
   shares?: number;
   price_per_share?: number;
   currency?: string;
+  // Travel mode trip linkage hint:
+  trip_hint?: string;
 }
 
 const PREFERRED_WORKING_MODELS = [
@@ -255,6 +257,7 @@ export async function parseSlipWithGeminiVision(
 - sender: ชื่อผู้โอน/บัญชีต้นทาง
 - bank: ธนาคาร เช่น KBank, SCB, KTB, BBL, TTB, GSB, PromptPay
 - note: หมายเหตุ/ข้อความช่วยจำถ้ามี
+- trip_hint: หากมีข้อความ แฮชแท็ก หรือชื่อสถานที่ท่องเที่ยว/โรงแรม/เที่ยวบิน (เช่น "เชียงใหม่", "#เชียงใหม่", "ภูเก็ต", "ญี่ปุ่น", "ตั๋วบิน", "ที่พัก") ให้สกัดชื่อทริปหรือสถานที่นั้นออกมาในฟิลด์นี้
 
 --- กรณีที่ 2: สลิปการลงทุนหุ้น/กองทุน (slip_type = "dime" หรือ "investment") ---
 - institution: สถาบันหรือแอป เช่น "Dime!" หรือ "Streaming" (หรือชื่อโบรกเกอร์ตามที่ปรากฏในสลิป)

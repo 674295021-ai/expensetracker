@@ -32,40 +32,363 @@ const Features = {
     }
   },
 
+  _currentTripId: null,
+  _currentTripData: null,
+
   _renderTripCard(t) {
     const budget = parseFloat(t.budget) || 0;
     const spent = parseFloat(t.total_spent) || 0;
     const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
     const isOver = spent > budget && budget > 0;
     const statusBadge = t.status === 'completed'
-      ? `<span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-700">✓ เสร็จสิ้น</span>`
-      : `<span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-700">✈ กำลังดำเนิน</span>`;
+      ? `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-700">✓ เสร็จสิ้น</span>`
+      : `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-700">✈ กำลังเดินทาง</span>`;
 
     return `
-      <div class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft flex flex-col gap-3">
-        <div class="flex items-start justify-between">
-          <div>
-            <div class="font-bold text-slate-800 text-sm">${Features._esc(t.name)}</div>
-            <div class="text-[11px] text-slate-400 mt-0.5">${Features._esc(t.destination || '–')} · ${t.start_date} → ${t.end_date}</div>
+      <div onclick="Features.openTripDetailModal('${t.id}')" class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft hover:shadow-lg hover:border-indigo-200 transition cursor-pointer flex flex-col justify-between gap-4 group">
+        <div class="space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <div class="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition flex items-center gap-1.5">
+                <span>✈️ ${Features._esc(t.name)}</span>
+              </div>
+              <div class="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                <span>📍 ${Features._esc(t.destination || 'ไม่ระบุ')}</span>
+                <span>·</span>
+                <span>${t.start_date} → ${t.end_date}</span>
+              </div>
+            </div>
+            ${statusBadge}
           </div>
-          ${statusBadge}
+
+          ${budget > 0 ? `
+            <div class="bg-slate-50/70 p-3 rounded-2xl border border-slate-100">
+              <div class="flex items-center justify-between text-xs mb-1.5 font-medium">
+                <span class="${isOver ? 'text-rose-600 font-bold' : 'text-slate-700'}">ใช้ไป ฿${Features._fmt(spent)}</span>
+                <span class="text-slate-400">งบ ฿${Features._fmt(budget)}</span>
+              </div>
+              <div class="w-full bg-slate-200/60 rounded-full h-2 overflow-hidden">
+                <div class="${isOver ? 'bg-rose-500' : 'bg-indigo-500'} h-full rounded-full transition-all" style="width:${pct}%"></div>
+              </div>
+              ${isOver ? `<p class="text-[11px] text-rose-600 mt-1.5 font-bold">⚠️ เกินงบ ฿${Features._fmt(spent - budget)}</p>` : `<p class="text-[10px] text-slate-400 mt-1">คงเหลือ ฿${Features._fmt(budget - spent)}</p>`}
+            </div>
+          ` : `
+            <div class="bg-slate-50/70 p-3 rounded-2xl border border-slate-100 flex items-center justify-between text-xs">
+              <span class="text-slate-500">ใช้จ่ายรวม</span>
+              <span class="font-bold font-mono text-slate-800">฿${Features._fmt(spent)}</span>
+            </div>
+          `}
         </div>
-        ${budget > 0 ? `
-          <div>
-            <div class="flex items-center justify-between text-xs mb-1">
-              <span class="${isOver ? 'text-rose-600 font-semibold' : 'text-slate-600'}">ใช้ไป ฿${Features._fmt(spent)}</span>
-              <span class="text-slate-400">งบ ฿${Features._fmt(budget)}</span>
-            </div>
-            <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-              <div class="${isOver ? 'bg-rose-500' : 'bg-indigo-500'} h-full rounded-full transition-all" style="width:${pct}%"></div>
-            </div>
-            ${isOver ? `<p class="text-[11px] text-rose-600 mt-1 font-semibold">⚠️ เกินงบ ฿${Features._fmt(spent - budget)}</p>` : ''}
-          </div>
-        ` : `<p class="text-xs text-slate-400">ไม่ได้ตั้งงบประมาณ</p>`}
-        <div class="flex gap-2 pt-2 border-t border-slate-100">
-          <button onclick="Features.deleteTrip('${t.id}')" class="flex-1 py-1.5 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-semibold transition">ลบทริป</button>
+
+        <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
+          <button onclick="event.stopPropagation(); Features.openTripDetailModal('${t.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1">
+            🔍 ดูรายละเอียดทริป
+          </button>
+          <button onclick="event.stopPropagation(); Features.deleteTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition" title="ลบทริป">
+            ลบ
+          </button>
         </div>
       </div>`;
+  },
+
+  async openTripDetailModal(tripId) {
+    Features._currentTripId = tripId;
+    const modal = document.getElementById('trip-detail-modal');
+    if (!modal) return;
+
+    modal.classList.remove('hidden');
+    document.getElementById('trip-detail-name').textContent = 'กำลังโหลดข้อมูลทริป...';
+
+    try {
+      const res = await API.request(`/api/trips/${tripId}`);
+      const data = res.data;
+      if (!data) throw new Error('ไม่พบข้อมูลทริป');
+
+      Features._currentTripData = data;
+      Features.renderTripDetail(data);
+    } catch (e) {
+      API.showToast(`โหลดรายละเอียดทริปไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
+  renderTripDetail(data) {
+    const trip = data.trip;
+    const expenses = data.expenses || [];
+    const budget = parseFloat(trip.budget) || 0;
+    const spent = parseFloat(trip.total_spent) || 0;
+    const remaining = budget - spent;
+    const isOver = spent > budget && budget > 0;
+    const pct = budget > 0 ? Math.min(Math.round((spent / budget) * 100), 100) : 0;
+    const actualPct = budget > 0 ? Math.round((spent / budget) * 100) : 0;
+
+    // Header
+    const nameEl = document.getElementById('trip-detail-name');
+    if (nameEl) nameEl.textContent = `✈️ ${trip.name}`;
+
+    const subEl = document.getElementById('trip-detail-sub');
+    if (subEl) subEl.textContent = `📍 ${trip.destination || 'ไม่ระบุจุดหมาย'} · 📅 ${trip.start_date} → ${trip.end_date}`;
+
+    const statusBadgeEl = document.getElementById('trip-detail-status-badge');
+    if (statusBadgeEl) {
+      statusBadgeEl.className = trip.status === 'completed'
+        ? 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-100 text-emerald-700'
+        : 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-100 text-indigo-700';
+      statusBadgeEl.textContent = trip.status === 'completed' ? '✓ จบทริปแล้ว' : '✈ กำลังเดินทาง';
+    }
+
+    const toggleBtn = document.getElementById('trip-toggle-status-btn');
+    if (toggleBtn) {
+      toggleBtn.textContent = trip.status === 'completed' ? '🔄 เปลี่ยนเป็นกำลังเดินทาง' : '✓ สรุปปิดจบทริปนี้';
+    }
+
+    // Budget card
+    const budgetEl = document.getElementById('trip-detail-budget');
+    if (budgetEl) budgetEl.textContent = `฿${Features._fmt(budget)}`;
+
+    const spentEl = document.getElementById('trip-detail-spent');
+    if (spentEl) spentEl.textContent = `฿${Features._fmt(spent)}`;
+
+    const remainingEl = document.getElementById('trip-detail-remaining');
+    if (remainingEl) {
+      remainingEl.textContent = `${remaining < 0 ? '-' : ''}฿${Features._fmt(Math.abs(remaining))}`;
+      remainingEl.className = `text-sm sm:text-base font-bold font-mono ${remaining < 0 ? 'text-rose-600' : 'text-emerald-600'} mt-0.5`;
+    }
+
+    const pctValEl = document.getElementById('trip-detail-pct-val');
+    if (pctValEl) pctValEl.textContent = `${actualPct}%`;
+
+    const barEl = document.getElementById('trip-detail-progress-bar');
+    if (barEl) {
+      barEl.style.width = `${pct}%`;
+      barEl.className = `h-full rounded-full transition-all ${isOver ? 'bg-rose-500' : 'bg-indigo-500'}`;
+    }
+
+    const warningEl = document.getElementById('trip-detail-over-warning');
+    if (warningEl) {
+      if (isOver) {
+        warningEl.classList.remove('hidden');
+        warningEl.textContent = `⚠️ ใช้จ่ายเกินงบประมาณที่ตั้งไว้ ฿${Features._fmt(spent - budget)}`;
+      } else {
+        warningEl.classList.add('hidden');
+      }
+    }
+
+    // Category Breakdown
+    const catMap = {};
+    expenses.forEach((e) => {
+      const cat = e.category || 'อื่นๆ';
+      catMap[cat] = (catMap[cat] || 0) + (parseFloat(e.amount) || 0);
+    });
+
+    const catContainer = document.getElementById('trip-detail-categories');
+    if (catContainer) {
+      const catIcons = {
+        'ที่พัก': '🏨',
+        'การเดินทาง': '🚗',
+        'อาหารและเครื่องดื่ม': '🍲',
+        'ช้อปปิ้ง': '🛍️',
+        'บันเทิง/สังสรรค์': '🎟️',
+        'อื่นๆ': '🏷️',
+      };
+      const entries = Object.entries(catMap);
+      if (entries.length === 0) {
+        catContainer.innerHTML = `<span class="text-slate-400 text-xs">ยังไม่มีรายการค่าใช้จ่าย</span>`;
+      } else {
+        catContainer.innerHTML = entries.map(([cat, total]) => {
+          const icon = catIcons[cat] || '🏷️';
+          return `
+            <div class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 flex items-center gap-1.5 font-medium shadow-2xs">
+              <span>${icon}</span>
+              <span class="font-bold">${Features._esc(cat)}:</span>
+              <span class="font-mono text-indigo-700 font-bold">฿${Features._fmt(total)}</span>
+            </div>`;
+        }).join('');
+      }
+    }
+
+    // Bill split calculation
+    Features.updateBillSplit();
+
+    // Timeline / Expense List
+    const countEl = document.getElementById('trip-expenses-count');
+    if (countEl) countEl.textContent = `${expenses.length} รายการ`;
+
+    const listEl = document.getElementById('trip-timeline-list');
+    const emptyEl = document.getElementById('trip-timeline-empty');
+    if (listEl) {
+      if (expenses.length === 0) {
+        listEl.innerHTML = '';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+      } else {
+        if (emptyEl) emptyEl.classList.add('hidden');
+        listEl.innerHTML = expenses.map((exp) => {
+          const amt = parseFloat(exp.amount) || 0;
+          return `
+            <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100/70 transition">
+              <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm">
+                  💳
+                </div>
+                <div>
+                  <div class="text-xs font-bold text-slate-800">${Features._esc(exp.note || exp.category)}</div>
+                  <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                    <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-semibold">${Features._esc(exp.category)}</span>
+                    <span>·</span>
+                    <span>📅 ${exp.expense_date}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="font-mono font-bold text-xs sm:text-sm text-slate-800">฿${Features._fmt(amt)}</span>
+                <button onclick="Features.deleteTripExpense('${exp.id}', '${trip.id}')" class="px-2 py-1 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 text-xs font-semibold transition" title="ลบออกจากทริป">
+                  ลบ
+                </button>
+              </div>
+            </div>`;
+        }).join('');
+      }
+    }
+  },
+
+  updateBillSplit() {
+    if (!Features._currentTripData) return;
+    const spent = parseFloat(Features._currentTripData.trip.total_spent) || 0;
+    const peopleInput = document.getElementById('trip-split-people');
+    const people = peopleInput ? Math.max(1, parseInt(peopleInput.value, 10) || 1) : 2;
+    const perPerson = spent / people;
+    const perPersonEl = document.getElementById('trip-split-per-person');
+    if (perPersonEl) {
+      perPersonEl.textContent = `฿${Features._fmt(perPerson)}`;
+    }
+  },
+
+  async toggleTripStatus() {
+    if (!Features._currentTripData) return;
+    const trip = Features._currentTripData.trip;
+    const newStatus = trip.status === 'completed' ? 'active' : 'completed';
+    try {
+      await API.request(`/api/trips/${trip.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      API.showToast(newStatus === 'completed' ? 'จบทริปเรียบร้อยแล้ว ✓' : 'เปิดทริปกำลังเดินทาง ✈️', 'success');
+      Features.openTripDetailModal(trip.id);
+      Features.loadTrips();
+    } catch (e) {
+      API.showToast(`เปลี่ยนสถานะทริปไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
+  openAddTripExpenseModal() {
+    const modal = document.getElementById('trip-add-expense-modal');
+    if (!modal) return;
+    const today = new Date().toISOString().split('T')[0];
+    const d = document.getElementById('trip-exp-date');
+    if (d) d.value = today;
+    const a = document.getElementById('trip-exp-amount');
+    if (a) a.value = '';
+    const n = document.getElementById('trip-exp-note');
+    if (n) n.value = '';
+    modal.classList.remove('hidden');
+  },
+
+  async handleAddTripExpense() {
+    if (!Features._currentTripId) return;
+    const category = document.getElementById('trip-exp-category')?.value;
+    const amountRaw = document.getElementById('trip-exp-amount')?.value;
+    const amount = parseFloat(amountRaw);
+    const expense_date = document.getElementById('trip-exp-date')?.value;
+    const note = document.getElementById('trip-exp-note')?.value?.trim();
+
+    if (!category || isNaN(amount) || amount <= 0 || !expense_date) {
+      API.showToast('กรุณากรอกหมวดหมู่ จำนวนเงินที่มากกว่า 0 และวันที่', 'error');
+      return;
+    }
+
+    try {
+      await API.request(`/api/trips/${Features._currentTripId}/expenses`, {
+        method: 'POST',
+        body: JSON.stringify({ category, amount, expense_date, note }),
+      });
+      const modal = document.getElementById('trip-add-expense-modal');
+      if (modal) modal.classList.add('hidden');
+      API.showToast('บันทึกค่าใช้จ่ายในทริปสำเร็จ! 💵', 'success');
+      Features.openTripDetailModal(Features._currentTripId);
+      Features.loadTrips();
+    } catch (e) {
+      API.showToast(`บันทึกค่าใช้จ่ายไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
+  async deleteTripExpense(expenseId, tripId) {
+    if (!confirm('ลบรายการค่าใช้จ่ายนี้ออกจากทริป?')) return;
+    try {
+      await API.request(`/api/trips/expenses/${expenseId}`, { method: 'DELETE' });
+      API.showToast('ลบรายการออกจากทริปแล้ว', 'success');
+      Features.openTripDetailModal(tripId);
+      Features.loadTrips();
+    } catch (e) {
+      API.showToast(`ลบรายการไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
+  async openLinkExpenseModal() {
+    const modal = document.getElementById('trip-link-modal');
+    const listEl = document.getElementById('trip-link-tx-list');
+    if (!modal || !listEl) return;
+
+    modal.classList.remove('hidden');
+    listEl.innerHTML = `<div class="py-8 text-center text-slate-400 text-xs">กำลังโหลดรายการรายจ่ายของคุณ...</div>`;
+
+    try {
+      const res = await API.request('/api/transactions?limit=40');
+      const transactions = (res.data?.transactions || []).filter((tx) => tx.type === 'expense');
+
+      if (transactions.length === 0) {
+        listEl.innerHTML = `<div class="py-8 text-center text-slate-400 text-xs">ไม่พบรายการรายจ่ายที่สามารถผูกได้</div>`;
+        return;
+      }
+
+      listEl.innerHTML = transactions.map((tx) => {
+        const amt = parseFloat(tx.amount) || 0;
+        return `
+          <div class="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition">
+            <div>
+              <div class="text-xs font-bold text-slate-800">${Features._esc(tx.note || tx.category)}</div>
+              <div class="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+                <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-semibold">${Features._esc(tx.category)}</span>
+                <span>·</span>
+                <span>📅 ${tx.transaction_date}</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="font-mono font-bold text-xs text-rose-600">-฿${Features._fmt(amt)}</span>
+              <button onclick="Features.linkTransactionToTrip('${tx.id}')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition">
+                + ผูกเข้าทริป
+              </button>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      listEl.innerHTML = `<div class="py-8 text-center text-rose-500 text-xs">โหลดรายการไม่สำเร็จ: ${e.message}</div>`;
+    }
+  },
+
+  async linkTransactionToTrip(transactionId) {
+    if (!Features._currentTripId) return;
+    try {
+      await API.request(`/api/trips/${Features._currentTripId}/link-transaction`, {
+        method: 'POST',
+        body: JSON.stringify({ transaction_id: transactionId }),
+      });
+      const modal = document.getElementById('trip-link-modal');
+      if (modal) modal.classList.add('hidden');
+      API.showToast('ผูกรายการเข้าทริปเรียบร้อยแล้ว! 🔗', 'success');
+      Features.openTripDetailModal(Features._currentTripId);
+      Features.loadTrips();
+    } catch (e) {
+      API.showToast(`ผูกรายการไม่สำเร็จ: ${e.message}`, 'error');
+    }
   },
 
   async deleteTrip(id) {

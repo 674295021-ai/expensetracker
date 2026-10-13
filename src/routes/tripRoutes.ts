@@ -1,5 +1,5 @@
 // Trip Routes - Travel Mode (Skill 05 API Design)
-import { Env, JWTPayload } from '../types';
+import { Env, JWTPayload, Transaction } from '../types';
 import { jsonSuccess, jsonError } from '../utils/response';
 import {
   getTrips,
@@ -109,6 +109,38 @@ export async function handleTripRoutes(
       return jsonSuccess(expense, 201);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to create trip expense';
+      return jsonError(msg, 'SERVER_ERROR', 500);
+    }
+  }
+
+  // Match POST /api/trips/:id/link-transaction
+  const linkTxMatch = path.match(/^\/api\/trips\/([a-zA-Z0-9_-]+)\/link-transaction$/);
+  if (linkTxMatch && method === 'POST') {
+    const tripId = linkTxMatch[1];
+    try {
+      const body = (await request.json()) as { transaction_id?: string };
+      if (!body.transaction_id) {
+        return jsonError('กรุณาระบุ transaction_id', 'BAD_REQUEST', 400);
+      }
+
+      const tx = await env.DB.prepare('SELECT * FROM transactions WHERE id = ? AND user_id = ?')
+        .bind(body.transaction_id, userId)
+        .first<Transaction>();
+
+      if (!tx) {
+        return jsonError('ไม่พบรายการรายจ่ายนี้ในระบบ', 'NOT_FOUND', 404);
+      }
+
+      const expense = await createTripExpense(env.DB, tripId, userId, {
+        category: tx.category,
+        amount: tx.amount,
+        note: tx.note || `ผูกจากรายการ ${tx.category}`,
+        expense_date: tx.transaction_date,
+      });
+
+      return jsonSuccess({ message: 'ผูกรายการเข้าทริปเรียบร้อยแล้ว', expense }, 201);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to link transaction';
       return jsonError(msg, 'SERVER_ERROR', 500);
     }
   }
