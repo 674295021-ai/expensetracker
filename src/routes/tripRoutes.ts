@@ -9,6 +9,9 @@ import {
   deleteTrip,
   createTripExpense,
   deleteTripExpense,
+  getUserActiveTrip,
+  setActiveTrip,
+  deactivateActiveTrip,
   CreateTripInput,
 } from '../db/trips';
 
@@ -22,10 +25,22 @@ export async function handleTripRoutes(
   const method = request.method;
   const userId = currentUser.sub;
 
-  // GET /api/trips - List all trips with totals
+  // GET /api/trips - List all trips with totals & active trip status
   if (path === '/api/trips' && method === 'GET') {
     const trips = await getTrips(env.DB, userId);
     return jsonSuccess(trips);
+  }
+
+  // GET /api/trips/active - Get current active trip for user
+  if (path === '/api/trips/active' && method === 'GET') {
+    const activeTrip = await getUserActiveTrip(env.DB, userId);
+    return jsonSuccess({ active_trip: activeTrip });
+  }
+
+  // POST /api/trips/deactivate - Deactivate current active trip
+  if ((path === '/api/trips/deactivate' || path === '/api/trips/active/deactivate') && method === 'POST') {
+    const deactivated = await deactivateActiveTrip(env.DB, userId);
+    return jsonSuccess({ message: 'ปิดโหมด Active Trip เรียบร้อยแล้ว', trip: deactivated });
   }
 
   // POST /api/trips - Create new trip
@@ -56,6 +71,22 @@ export async function handleTripRoutes(
       const msg = e instanceof Error ? e.message : 'Failed to create trip';
       return jsonError(msg, 'SERVER_ERROR', 500);
     }
+  }
+
+  // Match POST /api/trips/:id/activate
+  const activateMatch = path.match(/^\/api\/trips\/([a-zA-Z0-9_-]+)\/activate$/);
+  if (activateMatch && method === 'POST') {
+    const tripId = activateMatch[1];
+    const activated = await setActiveTrip(env.DB, userId, tripId);
+    if (!activated) return jsonError('ไม่พบข้อมูลทริปหรือไม่สามารถเปิดโหมดทริปได้', 'NOT_FOUND', 404);
+    return jsonSuccess({ message: 'เปิดโหมด Active Trip เรียบร้อยแล้ว ✈️', trip: activated });
+  }
+
+  // Match POST /api/trips/:id/deactivate
+  const deactivateMatch = path.match(/^\/api\/trips\/([a-zA-Z0-9_-]+)\/deactivate$/);
+  if (deactivateMatch && method === 'POST') {
+    const deactivated = await deactivateActiveTrip(env.DB, userId);
+    return jsonSuccess({ message: 'ปิดโหมด Active Trip เรียบร้อยแล้ว', trip: deactivated });
   }
 
   // Match /api/trips/:id
@@ -113,7 +144,7 @@ export async function handleTripRoutes(
     }
   }
 
-  // Match POST /api/trips/:id/link-transaction
+  // Match POST /api/trips/:id/link-transaction - Move transaction from main account into trip
   const linkTxMatch = path.match(/^\/api\/trips\/([a-zA-Z0-9_-]+)\/link-transaction$/);
   if (linkTxMatch && method === 'POST') {
     const tripId = linkTxMatch[1];
@@ -138,7 +169,12 @@ export async function handleTripRoutes(
         expense_date: tx.transaction_date,
       });
 
-      return jsonSuccess({ message: 'ผูกรายการเข้าทริปเรียบร้อยแล้ว', expense }, 201);
+      // ลบออกจากตาราง transactions หลักให้อัตโนมัติ (แยกงบเด็ดขาด)
+      await env.DB.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?')
+        .bind(body.transaction_id, userId)
+        .run();
+
+      return jsonSuccess({ message: 'ย้ายรายการเข้าทริปและนำออกจากบัญชีหลักเรียบร้อยแล้ว', expense }, 201);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to link transaction';
       return jsonError(msg, 'SERVER_ERROR', 500);

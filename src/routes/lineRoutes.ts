@@ -1,4 +1,4 @@
-// LINE Routes & Webhook (Feature 4 - Slip OCR & Account Linking)
+// LINE Routes & Webhook (Feature 4 - Slip OCR, Account Linking & Active Trip State)
 import { Env, JWTPayload } from '../types';
 import { jsonSuccess, jsonError } from '../utils/response';
 import {
@@ -7,6 +7,7 @@ import {
   replyLineMessage,
   createSlipRecordedFlexMessage,
   createLinkAccountFlexMessage,
+  createQuickReply,
   LineWebhookEvent,
 } from '../services/line';
 import { parseSlipWithGeminiVision } from '../services/gemini';
@@ -18,10 +19,20 @@ import {
   unlinkLineUser,
 } from '../db/line';
 import { createTransaction, getUserSummary, getMonthlyExpense } from '../db/transactions';
-import { upsertDimeInvestment, upsertStockInvestment, getInvestments } from '../db/investments';
+import { upsertStockInvestment, getInvestments } from '../db/investments';
 import { getAllUsers } from '../db/users';
 import { syncPortfolioStockPrices } from '../services/stock';
-import { findActiveTripForDate, findTripByKeyword, createTripExpense, getTripById } from '../db/trips';
+import {
+  findActiveTripForDate,
+  findTripByKeyword,
+  createTripExpense,
+  getTripById,
+  getUserActiveTrip,
+  setActiveTrip,
+  deactivateActiveTrip,
+  startTripByNameOrKeyword,
+  getLatestTrip,
+} from '../db/trips';
 
 // Helper to format date in Thai format: "06 ต.ค. 2569"
 function formatThaiDate(dateStr?: string): string {
@@ -51,7 +62,7 @@ export async function handleLineRoutes(
   const path = url.pathname;
   const method = request.method;
 
-  // Log incoming request headers at the very first line of the handler
+  // Log incoming request headers
   console.log("Incoming request headers:", JSON.stringify(Object.fromEntries(request.headers)));
 
   const channelSecret = env.LINE_CHANNEL_SECRET;
@@ -107,7 +118,6 @@ export async function handleLineRoutes(
     }
 
     // Process all events in background using ctx.waitUntil() so we can return 200 to LINE immediately.
-    // This prevents LINE from thinking the webhook timed out and retrying delivery repeatedly.
     const processEvents = async () => {
       for (const event of events) {
         if (!event.replyToken || !event.source?.userId) continue;
@@ -115,11 +125,12 @@ export async function handleLineRoutes(
         const lineUserId = event.source.userId;
         const replyToken = event.replyToken;
         const message = event.message;
-        if (!message) continue;
 
         try {
-          // 1. ตรวจจับ Event รูปภาพ: if (event.type === 'message' && event.message.type === 'image')
-          if (event.type === 'message' && message.type === 'image') {
+          // ---------------------------------------------------------------
+          // 1. ตรวจจับ Event รูปภาพ: if (event.type === 'message' && message.type === 'image')
+          // ---------------------------------------------------------------
+          if (event.type === 'message' && message && message.type === 'image') {
             console.log(`[LINE Webhook][Image] Processing image message ID: ${message.id} from user: ${lineUserId}`);
 
             let linkedUser = await getLineUser(env.DB, lineUserId);
@@ -127,7 +138,6 @@ export async function handleLineRoutes(
             // If not linked, check if single admin user exists or send linking guide
             if (!linkedUser) {
               console.log(`[LINE Webhook][Image] User ${lineUserId} is not linked yet, checking default user...`);
-              // Attempt to link to the primary admin or first registered user in the database
               const allUsers = await getAllUsers(env.DB);
               if (allUsers.length > 0) {
                 const primaryUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
@@ -262,6 +272,7 @@ export async function handleLineRoutes(
                 }
 
                 const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
+                const currentActiveTrip = await getUserActiveTrip(env.DB, linkedUser.user_id);
 
                 const investReplyText =
                   `📈 บันทึกการลงทุน ${institution} สำเร็จ\n` +
@@ -274,88 +285,152 @@ export async function handleLineRoutes(
                   `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
                   `💼 บันทึกเข้าพอร์ต Investments เรียบร้อยแล้ว ✅`;
 
-                await replyLineMessage(replyToken, [{ type: 'text', text: investReplyText }], lineToken);
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: investReplyText, quickReply: createQuickReply(Boolean(currentActiveTrip)) }],
+                  lineToken
+                );
                 console.log(`[LINE Webhook][Investment] Step 4 Success: Replied with ${institution} investment summary.`);
               } else {
-                // --- กรณีสลิปโอนเงินทั่วไป ---
+                // --- กรณีสลิปโอนเงิน / สแกนจ่ายทั่วไป ---
                 const txType: 'income' | 'expense' = slipResult.type === 'income' ? 'income' : 'expense';
                 const txCategory = slipResult.category || (txType === 'income' ? 'รายรับอื่นๆ' : 'รายจ่ายอื่นๆ');
                 const txAmount = slipResult.amount;
                 const txNote = slipResult.note || (slipResult.recipient ? `โอนให้ ${slipResult.recipient}` : 'จากสลิปโอนเงิน');
 
-                console.log(`[LINE Webhook][Transfer] Step 3: Saving transaction (${txType}, ${txCategory}, ${txAmount} THB) to D1...`);
-                try {
-                  await createTransaction(env.DB, linkedUser.user_id, {
-                    type: txType,
-                    category: txCategory,
-                    amount: txAmount,
-                    note: txNote,
-                    transaction_date: txDate,
-                  });
-                } catch (d1Err: unknown) {
-                  const d1ErrMsg = d1Err instanceof Error ? d1Err.message : String(d1Err);
-                  console.error('[LINE Webhook][Transfer] Step 3 Failed (D1 Database error):', d1ErrMsg);
+                // ตรวจสอบ Active Trip State ของผู้ใช้ (แยกงบเด็ดขาด - รูปแบบ A)
+                const activeTrip = await getUserActiveTrip(env.DB, linkedUser.user_id);
+
+                if (activeTrip && txType === 'expense') {
+                  // ========================================================
+                  // 1. โหมด ACTIVE TRIP (แยกงบเด็ดขาด - รูปแบบ A)
+                  // สลิปทริปทั้งหมดลงเฉพาะตาราง trip_expenses เท่านั้น
+                  // ห้ามบันทึกลงตาราง transactions หลักเด็ดขาด 100%!
+                  // ========================================================
+                  console.log(`[LINE Webhook][ActiveTrip] Active Trip "${activeTrip.name}" detected. Saving to trip_expenses ONLY...`);
+                  try {
+                    await createTripExpense(env.DB, activeTrip.id, linkedUser.user_id, {
+                      category: txCategory,
+                      amount: txAmount,
+                      note: txNote,
+                      expense_date: txDate,
+                    });
+                  } catch (tripErr: unknown) {
+                    const tripErrMsg = tripErr instanceof Error ? tripErr.message : String(tripErr);
+                    console.error('[LINE Webhook][ActiveTrip] Failed to record trip expense:', tripErrMsg);
+                    await replyLineMessage(
+                      replyToken,
+                      [{ type: 'text', text: `❌ บันทึกค่าใช้จ่ายเข้าทริปไม่สำเร็จ: ${tripErrMsg}` }],
+                      lineToken
+                    );
+                    continue;
+                  }
+
+                  const tripDetail = await getTripById(env.DB, activeTrip.id, linkedUser.user_id);
+                  const remaining = tripDetail?.trip.remaining_budget ?? 0;
+                  const spent = tripDetail?.trip.total_spent ?? 0;
+                  const budget = tripDetail?.trip.budget ?? 0;
+
+                  const tripReplyText =
+                    `✈️ บันทึกค่าใช้จ่ายเข้าทริป "${activeTrip.name}" สำเร็จ\n` +
+                    `💵 จำนวน: ฿${txAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                    `📊 หมวดหมู่: ${txCategory}\n` +
+                    (slipResult.recipient ? `👤 ผู้รับ: ${slipResult.recipient}\n` : '') +
+                    (slipResult.bank ? `🏦 ธนาคาร: ${slipResult.bank}\n` : '') +
+                    `📅 วันที่: ${thaiDateText}\n` +
+                    `🎯 งบทริปคงเหลือ: ฿${remaining.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` +
+                    (budget > 0 ? ` (ใช้ไป ฿${spent.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ฿${budget.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})` : '') +
+                    `\n🔒 (แยกงบเดินทางเด็ดขาด ไม่กระทบกระเป๋าเงินหลัก) ✅`;
+
                   await replyLineMessage(
                     replyToken,
-                    [{ type: 'text', text: `❌ เกิดข้อผิดพลาดในการบันทึกฐานข้อมูล D1: ${d1ErrMsg}` }],
+                    [{ type: 'text', text: tripReplyText, quickReply: createQuickReply(true) }],
                     lineToken
                   );
-                  continue;
-                }
-
-                // ตรวจสอบการผูกเข้าทริปเดินทาง (Travel Mode) อัตโนมัติ:
-                // 1) หากมีชื่อทริป/แฮชแท็ก เช่น "เชียงใหม่", "#เชียงใหม่", "โรงแรม", "ตั๋วบิน" (จ่ายล่วงหน้าข้ามวัน)
-                // 2) หรือหากวันที่ทำรายการอยู่ในช่วงวันเดินทางของทริปที่กำลังเดินทางอยู่
-                let matchedTrip = null;
-                let tripRemaining = 0;
-                if (txType === 'expense') {
-                  const keyword = [slipResult.trip_hint, slipResult.note, slipResult.recipient].filter(Boolean).join(' ');
-                  if (keyword) {
-                    matchedTrip = await findTripByKeyword(env.DB, linkedUser.user_id, keyword);
+                  console.log(`[LINE Webhook][ActiveTrip] Step 4 Success: Replied with Active Trip expense.`);
+                } else {
+                  // ========================================================
+                  // 2. โหมดปกติ (NORMAL MODE)
+                  // บันทึกลงตาราง transactions หลักตามเดิม
+                  // ========================================================
+                  console.log(`[LINE Webhook][Transfer] Step 3: Saving transaction (${txType}, ${txCategory}, ${txAmount} THB) to D1...`);
+                  try {
+                    await createTransaction(env.DB, linkedUser.user_id, {
+                      type: txType,
+                      category: txCategory,
+                      amount: txAmount,
+                      note: txNote,
+                      transaction_date: txDate,
+                    });
+                  } catch (d1Err: unknown) {
+                    const d1ErrMsg = d1Err instanceof Error ? d1Err.message : String(d1Err);
+                    console.error('[LINE Webhook][Transfer] Step 3 Failed (D1 Database error):', d1ErrMsg);
+                    await replyLineMessage(
+                      replyToken,
+                      [{ type: 'text', text: `❌ เกิดข้อผิดพลาดในการบันทึกฐานข้อมูล D1: ${d1ErrMsg}` }],
+                      lineToken
+                    );
+                    continue;
                   }
-                  if (!matchedTrip) {
-                    matchedTrip = await findActiveTripForDate(env.DB, linkedUser.user_id, txDate);
-                  }
 
-                  if (matchedTrip) {
-                    try {
-                      await createTripExpense(env.DB, matchedTrip.id, linkedUser.user_id, {
-                        category: txCategory,
-                        amount: txAmount,
-                        note: txNote,
-                        expense_date: txDate,
-                      });
-                      const tripDetail = await getTripById(env.DB, matchedTrip.id, linkedUser.user_id);
-                      tripRemaining = tripDetail?.trip.remaining_budget ?? 0;
-                      console.log(`[LINE Webhook][Trip] Auto-linked ${txAmount} THB to trip: ${matchedTrip.name}`);
-                    } catch (tripErr) {
-                      console.warn('[LINE Webhook][Trip] Failed to auto-link expense to trip:', tripErr);
+                  // ตรวจสอบการผูกเข้าทริปเดินทาง (Travel Mode) อัตโนมัติ:
+                  // 1) หากมีชื่อทริป/แฮชแท็ก เช่น "เชียงใหม่", "#เชียงใหม่", "โรงแรม", "ตั๋วบิน" (จ่ายล่วงหน้าข้ามวัน)
+                  // 2) หรือหากวันที่ทำรายการอยู่ในช่วงวันเดินทางของทริปที่กำลังเดินทางอยู่
+                  let matchedTrip = null;
+                  let tripRemaining = 0;
+                  if (txType === 'expense') {
+                    const keyword = [slipResult.trip_hint, slipResult.note, slipResult.recipient].filter(Boolean).join(' ');
+                    if (keyword) {
+                      matchedTrip = await findTripByKeyword(env.DB, linkedUser.user_id, keyword);
+                    }
+                    if (!matchedTrip) {
+                      matchedTrip = await findActiveTripForDate(env.DB, linkedUser.user_id, txDate);
+                    }
+
+                    if (matchedTrip) {
+                      try {
+                        await createTripExpense(env.DB, matchedTrip.id, linkedUser.user_id, {
+                          category: txCategory,
+                          amount: txAmount,
+                          note: txNote,
+                          expense_date: txDate,
+                        });
+                        const tripDetail = await getTripById(env.DB, matchedTrip.id, linkedUser.user_id);
+                        tripRemaining = tripDetail?.trip.remaining_budget ?? 0;
+                        console.log(`[LINE Webhook][Trip] Auto-linked ${txAmount} THB to trip: ${matchedTrip.name}`);
+                      } catch (tripErr) {
+                        console.warn('[LINE Webhook][Trip] Failed to auto-link expense to trip:', tripErr);
+                      }
                     }
                   }
+
+                  const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
+                  const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
+
+                  const label = txType === 'income' ? 'รายรับ' : 'รายจ่าย';
+                  const tripTag = matchedTrip
+                    ? `\n✈️ ผูกเข้าทริป: ${matchedTrip.name} (คงเหลืองบ ฿${tripRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                    : '';
+
+                  const transferReplyText =
+                    `✅ บันทึก${label}สำเร็จ\n` +
+                    `💵 จำนวน: ฿${txAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                    `📊 หมวดหมู่: ${txCategory}\n` +
+                    (slipResult.recipient ? `👤 ผู้รับ: ${slipResult.recipient}\n` : '') +
+                    (slipResult.bank ? `🏦 ธนาคาร: ${slipResult.bank}\n` : '') +
+                    `📅 วันที่: ${thaiDateText}\n` +
+                    `📊 รายจ่ายเดือนนี้รวม: ฿${currentMonthExpense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                    `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` +
+                    tripTag +
+                    ` ✅`;
+
+                  await replyLineMessage(
+                    replyToken,
+                    [{ type: 'text', text: transferReplyText, quickReply: createQuickReply(false) }],
+                    lineToken
+                  );
+                  console.log(`[LINE Webhook][Transfer] Step 4 Success: Replied with transfer summary.`);
                 }
-
-                const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
-                const currentMonthExpense = await getMonthlyExpense(env.DB, linkedUser.user_id, txDate.slice(0, 7));
-
-                const label = txType === 'income' ? 'รายรับ' : 'รายจ่าย';
-                const tripTag = matchedTrip
-                  ? `\n✈️ ผูกเข้าทริป: ${matchedTrip.name} (คงเหลืองบ ฿${tripRemaining.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-                  : '';
-
-                const transferReplyText =
-                  `✅ บันทึก${label}สำเร็จ\n` +
-                  `💵 จำนวน: ฿${txAmount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
-                  `📊 หมวดหมู่: ${txCategory}\n` +
-                  (slipResult.recipient ? `👤 ผู้รับ: ${slipResult.recipient}\n` : '') +
-                  (slipResult.bank ? `🏦 ธนาคาร: ${slipResult.bank}\n` : '') +
-                  `📅 วันที่: ${thaiDateText}\n` +
-                  `📊 รายจ่ายเดือนนี้รวม: ฿${currentMonthExpense.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
-                  `💎 เงินคงเหลือสุทธิ: ฿${(summaryData?.balance ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` +
-                  tripTag +
-                  ` ✅`;
-
-                await replyLineMessage(replyToken, [{ type: 'text', text: transferReplyText }], lineToken);
-                console.log(`[LINE Webhook][Transfer] Step 4 Success: Replied with transfer summary.`);
               }
             } else {
               console.log('[LINE Webhook][Image] Image is not recognized as a financial slip.');
@@ -365,18 +440,32 @@ export async function handleLineRoutes(
                   {
                     type: 'text',
                     text: '⚠️ ตรวจสอบรูปภาพแล้วไม่พบข้อมูลสลิปโอนเงินหรือสลิป Dime! ที่ชัดเจน\n\nโปรดตรวจสอบว่าเป็นภาพสลิปที่มีตัวเลขยอดเงินชัดเจน แล้วลองส่งใหม่อีกครั้งครับ',
+                    quickReply: createQuickReply(false),
                   },
                 ],
                 lineToken
               );
             }
+            continue;
           }
 
-          // B. Handling Text Messages (Linking and Querying)
-          if (message.type === 'text' && message.text) {
-            const text = message.text.trim();
+          // ---------------------------------------------------------------
+          // 2. Handling Text & Postback Messages (Commands & Rich Menu)
+          // ---------------------------------------------------------------
+          let text = '';
+          if (event.type === 'message' && message && message.type === 'text' && message.text) {
+            text = message.text.trim();
+          } else if (event.type === 'postback' && event.postback?.data) {
+            const pbData = event.postback.data.trim();
+            if (/^(?:action=)?status$/i.test(pbData)) text = 'สถานะ';
+            else if (/^(?:action=)?portfolio|port$/i.test(pbData)) text = 'พอร์ต';
+            else if (/^(?:action=)?end_trip$/i.test(pbData)) text = 'จบทริป';
+            else if (/^(?:action=)?start_trip$/i.test(pbData)) text = 'เริ่มทริป';
+            else text = pbData;
+          }
 
-            // 1. Account linking command: "LINK 123456" or "เชื่อมต่อ 123456"
+          if (text) {
+            // A. Account linking command: "LINK 123456" or "เชื่อมต่อ 123456"
             const linkMatch = text.match(/^(?:link|เชื่อมต่อ)\s+([a-zA-Z0-9]{4,8})$/i);
             if (linkMatch) {
               const token = linkMatch[1];
@@ -389,6 +478,7 @@ export async function handleLineRoutes(
                     {
                       type: 'text',
                       text: '🎉 เชื่อมต่อบัญชีสำเร็จเรียบร้อยแล้วครับ!\n\nตอนนี้คุณสามารถส่งภาพสลิปโอนเงินเข้ามาในแชตนี้ได้ทันที ระบบจะสแกนและบันทึกลงแดชบอร์ดให้คุณโดยอัตโนมัติ ✨',
+                      quickReply: createQuickReply(false),
                     },
                   ],
                   lineToken
@@ -408,29 +498,171 @@ export async function handleLineRoutes(
               continue;
             }
 
-            // 2. สอบถามข้อมูลสรุปยอดเงิน และพอร์ตการลงทุน: "พอร์ต", "สรุป", "port", "portfolio"
-            if (/^(?:พอร์ต|พอร์ท|port|portfolio|สรุป|ยอด|summary|balance|รายงาน)/i.test(text)) {
-              let linkedUser = await getLineUser(env.DB, lineUserId);
-              if (!linkedUser) {
-                const allUsers = await getAllUsers(env.DB);
-                if (allUsers.length > 0) {
-                  const primaryUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
-                  await env.DB.prepare(
-                    'INSERT INTO line_users (line_user_id, user_id, display_name) VALUES (?, ?, ?) ON CONFLICT(line_user_id) DO UPDATE SET user_id = excluded.user_id'
-                  ).bind(lineUserId, primaryUser.id, 'LINE User').run();
-                  linkedUser = { line_user_id: lineUserId, user_id: primaryUser.id, display_name: 'LINE User', picture_url: null };
-                }
+            // Ensure linked user
+            let linkedUser = await getLineUser(env.DB, lineUserId);
+            if (!linkedUser) {
+              const allUsers = await getAllUsers(env.DB);
+              if (allUsers.length > 0) {
+                const primaryUser = allUsers.find(u => u.role === 'admin') || allUsers[0];
+                await env.DB.prepare(
+                  'INSERT INTO line_users (line_user_id, user_id, display_name) VALUES (?, ?, ?) ON CONFLICT(line_user_id) DO UPDATE SET user_id = excluded.user_id'
+                ).bind(lineUserId, primaryUser.id, 'LINE User').run();
+                linkedUser = { line_user_id: lineUserId, user_id: primaryUser.id, display_name: 'LINE User', picture_url: null };
               }
+            }
 
-              if (!linkedUser) {
+            if (!linkedUser) {
+              await replyLineMessage(
+                replyToken,
+                [createLinkAccountFlexMessage(webUrl)],
+                lineToken
+              );
+              continue;
+            }
+
+            // B. คำสั่งเริ่มทริปเดินทาง: "เริ่มทริป [ชื่อทริป]", "start trip [name]", "เริ่มทริป"
+            const startTripMatch = text.match(/^(?:เริ่มทริป|เปิดทริป|start\s*trip)(?:\s+(.+))?$/i);
+            if (startTripMatch) {
+              const tripName = startTripMatch[1]?.trim();
+              if (tripName) {
+                const trip = await startTripByNameOrKeyword(env.DB, linkedUser.user_id, tripName);
+                const replyText =
+                  `🚀 เปิดโหมด Active Trip สำเร็จ!\n\n` +
+                  `✈️ ทริป: ${trip.name}\n` +
+                  (trip.destination ? `📍 ปลายทาง: ${trip.destination}\n` : '') +
+                  `📅 ช่วงเวลา: ${trip.start_date} ถึง ${trip.end_date}\n` +
+                  `💰 งบประมาณ: ฿${(trip.budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
+                  `🔒 ระบบเปิดโหมดแยกงบเด็ดขาดแล้ว สลิปโอนเงิน/สแกนจ่ายหลังจากนี้จะถูกบันทึกเข้าทริปนี้โดยอัตโนมัติ 100% (ไม่บันทึกลงบัญชีหลัก)\n\n` +
+                  `เมื่อสิ้นสุดการเดินทาง สามารถพิมพ์ "จบทริป" หรือกดปุ่ม [🏁 จบทริป] ได้ตลอดเวลาครับ ✨`;
+
                 await replyLineMessage(
                   replyToken,
-                  [createLinkAccountFlexMessage(webUrl)],
+                  [{ type: 'text', text: replyText, quickReply: createQuickReply(true) }],
+                  lineToken
+                );
+                continue;
+              } else {
+                // ไม่ได้ระบุชื่อทริป ตรวจสอบสถานะปัจจุบัน
+                const currentActive = await getUserActiveTrip(env.DB, linkedUser.user_id);
+                if (currentActive) {
+                  const replyText =
+                    `✈️ คุณอยู่ในโหมด Active Trip อยู่แล้วครับ!\n\n` +
+                    `📍 ทริปปัจจุบัน: ${currentActive.name}\n` +
+                    `💰 งบประมาณ: ฿${(currentActive.budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                    `💸 ใช้จ่ายไปแล้ว: ฿${(currentActive.total_spent || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
+                    `💡 หากต้องการเปลี่ยนทริป ให้พิมพ์ "เริ่มทริป [ชื่อทริปใหม่]" หรือพิมพ์ "จบทริป" เพื่อปิดทริปเดิมครับ`;
+
+                  await replyLineMessage(
+                    replyToken,
+                    [{ type: 'text', text: replyText, quickReply: createQuickReply(true) }],
+                    lineToken
+                  );
+                  continue;
+                } else {
+                  const latestTrip = await getLatestTrip(env.DB, linkedUser.user_id);
+                  if (latestTrip) {
+                    await setActiveTrip(env.DB, linkedUser.user_id, latestTrip.id);
+                    const replyText =
+                      `🚀 เปิดโหมด Active Trip: "${latestTrip.name}" สำเร็จ!\n\n` +
+                      `📅 ช่วงเวลา: ${latestTrip.start_date} ถึง ${latestTrip.end_date}\n` +
+                      `💰 งบประมาณ: ฿${(latestTrip.budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
+                      `🔒 สลิปโอนเงิน/สแกนจ่ายหลังจากนี้จะถูกบันทึกเข้าทริปนี้โดยอัตโนมัติ 100%`;
+
+                    await replyLineMessage(
+                      replyToken,
+                      [{ type: 'text', text: replyText, quickReply: createQuickReply(true) }],
+                      lineToken
+                    );
+                    continue;
+                  } else {
+                    const replyText =
+                      `💡 กรุณาระบุชื่อทริปที่ต้องการเริ่ม เช่น:\n` +
+                      `• เริ่มทริป เชียงใหม่\n` +
+                      `• เริ่มทริป ญี่ปุ่น 2026\n\n` +
+                      `หรือสร้างทริปใหม่บนหน้าเว็บได้ที่: ${webUrl}`;
+
+                    await replyLineMessage(
+                      replyToken,
+                      [{ type: 'text', text: replyText, quickReply: createQuickReply(false) }],
+                      lineToken
+                    );
+                    continue;
+                  }
+                }
+              }
+            }
+
+            // C. คำสั่งจบทริป: "จบทริป", "ปิดทริป", "สิ้นสุดทริป", "end trip"
+            if (/^(?:จบทริป|ปิดทริป|สิ้นสุดทริป|end\s*trip)$/i.test(text)) {
+              const deactivated = await deactivateActiveTrip(env.DB, linkedUser.user_id);
+              if (deactivated) {
+                const replyText =
+                  `🏁 ปิดโหมด Active Trip เรียบร้อยแล้ว!\n\n` +
+                  `✈️ สรุปค่าใช้จ่ายทริป "${deactivated.name}":\n` +
+                  `💵 ใช้จ่ายทั้งหมด: ฿${(deactivated.total_spent || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                  `🎯 งบประมาณที่ตั้งไว้: ฿${(deactivated.budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                  `💰 งบคงเหลือ: ฿${(deactivated.remaining_budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
+                  `🟢 กลับสู่โหมดบันทึกปกติเรียบร้อยแล้ว สลิปหลังจากนี้จะบันทึกลงบัญชีหลักตามปกติครับ 🎉`;
+
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: replyText, quickReply: createQuickReply(false) }],
+                  lineToken
+                );
+                continue;
+              } else {
+                await replyLineMessage(
+                  replyToken,
+                  [{
+                    type: 'text',
+                    text: '🟢 ปัจจุบันคุณไม่ได้อยู่ในโหมดทริปเดินทาง (อยู่ในโหมดปกติอยู่แล้วครับ)',
+                    quickReply: createQuickReply(false),
+                  }],
                   lineToken
                 );
                 continue;
               }
+            }
 
+            // D. เช็กสถานะระบบ: "สถานะ", "โหมด", "status", "mode", "check"
+            if (/^(?:สถานะ|โหมด|status|mode|check|เช็กสถานะ|เช็คสถานะ)$/i.test(text)) {
+              const activeTrip = await getUserActiveTrip(env.DB, linkedUser.user_id);
+              if (activeTrip) {
+                const statusReplyText =
+                  `✈️ สถานะระบบ: โหมดทริปเดินทาง (Active Trip)\n\n` +
+                  `📍 ทริปที่กำลังเดินทาง: ${activeTrip.name}\n` +
+                  (activeTrip.destination ? `🚩 ปลายทาง: ${activeTrip.destination}\n` : '') +
+                  `📅 ช่วงเวลา: ${activeTrip.start_date} ถึง ${activeTrip.end_date}\n` +
+                  `💰 งบประมาณ: ฿${(activeTrip.budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                  `💸 ใช้จ่ายไปแล้ว: ฿${(activeTrip.total_spent || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n` +
+                  `🎯 งบคงเหลือ: ฿${(activeTrip.remaining_budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n\n` +
+                  `🔒 ระบบกำลังแยกงบเดินทางเด็ดขาด สลิปทั้งหมดจะบันทึกเข้าทริปนี้โดยอัตโนมัติ (ไม่บันทึกลงบัญชีหลัก)\n\n` +
+                  `พิมพ์ "จบทริป" หรือกด [🏁 จบทริป] เมื่อเดินทางเสร็จสิ้นครับ`;
+
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: statusReplyText, quickReply: createQuickReply(true) }],
+                  lineToken
+                );
+                continue;
+              } else {
+                const statusReplyText =
+                  `🟢 สถานะระบบ: โหมดบันทึกปกติ (Normal Mode)\n\n` +
+                  `💡 สลิปและรายจ่ายทั้งหมดจะบันทึกลงในกระเป๋าเงินและบัญชีรายรับ-รายจ่ายหลัก\n\n` +
+                  `✈️ หากต้องการเดินทางและแยกงบเฉพาะทริป:\n` +
+                  `พิมพ์ "เริ่มทริป [ชื่อทริป]" หรือกดปุ่ม [🚀 เริ่มทริป] ด้านล่างได้เลยครับ`;
+
+                await replyLineMessage(
+                  replyToken,
+                  [{ type: 'text', text: statusReplyText, quickReply: createQuickReply(false) }],
+                  lineToken
+                );
+                continue;
+              }
+            }
+
+            // E. สอบถามข้อมูลสรุปยอดเงิน และพอร์ตการลงทุน: "พอร์ต", "สรุป", "port", "portfolio"
+            if (/^(?:พอร์ต|พอร์ท|port|portfolio|สรุป|ยอด|summary|balance|รายงาน)/i.test(text)) {
               // ซิงค์ราคาหุ้น Real-time ล่าสุดถ้ามี STOCK_API_KEY
               if (env.STOCK_API_KEY) {
                 try {
@@ -442,6 +674,7 @@ export async function handleLineRoutes(
 
               const summaryData = await getUserSummary(env.DB, linkedUser.user_id);
               const portfolio = await getInvestments(env.DB, linkedUser.user_id);
+              const currentActiveTrip = await getUserActiveTrip(env.DB, linkedUser.user_id);
 
               const income = (summaryData?.total_income ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
               const expense = (summaryData?.total_expense ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -467,6 +700,10 @@ export async function handleLineRoutes(
                 stockLines = '\n📋 รายการสินทรัพย์: ยังไม่มีสินทรัพย์ในพอร์ต';
               }
 
+              const activeTripTag = currentActiveTrip
+                ? `\n\n✈️ [ทริปที่กำลังเดินทาง: ${currentActiveTrip.name}]\n• ใช้งบไปแล้ว: ฿${(currentActiveTrip.total_spent || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (คงเหลือ ฿${(currentActiveTrip.remaining_budget || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
+                : '';
+
               const replyText =
                 `📊 สรุปสถานะการเงิน & พอร์ตการลงทุน\n\n` +
                 `💰 [กระเป๋าเงิน]\n` +
@@ -479,28 +716,36 @@ export async function handleLineRoutes(
                 `• กำไร/ขาดทุนรวม: ${invPlText} (${invPlPctText})` +
                 `${stockLines}\n\n` +
                 `💎 [ความมั่งคั่งสุทธิ (Net Worth)]\n` +
-                `• รวมความมั่งคั่งสุทธิ: ฿${netWorth}\n\n` +
-                `🔗 ดูรายละเอียด: ${webUrl}`;
+                `• รวมความมั่งคั่งสุทธิ: ฿${netWorth}` +
+                activeTripTag +
+                `\n\n🔗 ดูรายละเอียด: ${webUrl}`;
 
               await replyLineMessage(
                 replyToken,
-                [{ type: 'text', text: replyText }],
+                [{ type: 'text', text: replyText, quickReply: createQuickReply(Boolean(currentActiveTrip)) }],
                 lineToken
               );
               continue;
             }
 
-            // 3. Default: guide user to use features
+            // F. Default response: Feature Guide
+            const currentActiveTrip = await getUserActiveTrip(env.DB, linkedUser.user_id);
+            const modeText = currentActiveTrip
+              ? `✈️ โหมดปัจจุบัน: Active Trip ("${currentActiveTrip.name}")\n💡 สลิปทั้งหมดจะแยกงบเข้าทริปนี้โดยอัตโนมัติ`
+              : `🟢 โหมดปัจจุบัน: บันทึกปกติ`;
+
             await replyLineMessage(
               replyToken,
               [
                 {
                   type: 'text',
-                  text: '👋 สวัสดีครับ! ระบบ ExpenseTracker รองรับ:\n\n📷 ส่งภาพสลิป → บันทึกรายจ่าย / หุ้นเข้าพอร์ตอัตโนมัติ\n📊 พิมพ์ "พอร์ต" หรือ "สรุป" → ดูยอดเงินและพอร์ตลงทุน\n🔗 พิมพ์ "LINK <รหัส>" → เชื่อมต่อบัญชีเว็บ\n\n💡 เยี่ยมชมแดชบอร์ดเพิ่มเติมได้ที่: ' + webUrl,
+                  text: `👋 สวัสดีครับ! ระบบ ExpenseTracker พร้อมใช้งาน:\n\n${modeText}\n\n📷 ส่งภาพสลิป → บันทึกรายการ / พอร์ตลงทุนอัตโนมัติ\n🚀 พิมพ์ "เริ่มทริป [ชื่อ]" → เปิดโหมดแยกงบเดินทาง\n🏁 พิมพ์ "จบทริป" → ปิดโหมดทริปและสรุปงบ\n📊 พิมพ์ "พอร์ต" หรือ "สรุป" → ดูยอดเงินและพอร์ต\n❓ พิมพ์ "สถานะ" → ตรวจสอบโหมดปัจจุบัน\n\n🌐 แดชบอร์ด: ${webUrl}`,
+                  quickReply: createQuickReply(Boolean(currentActiveTrip)),
                 },
               ],
               lineToken
             );
+            continue;
           }
 
           // Default response for unlinked users
@@ -537,14 +782,11 @@ export async function handleLineRoutes(
     if (ctx) {
       ctx.waitUntil(processEvents());
     } else {
-      // Fallback: process synchronously if no ctx (should not happen in Cloudflare Workers)
       await processEvents();
     }
 
     return new Response('OK', { status: 200 });
   }
-
-
 
   // Authenticated Web API Endpoints for current user
   if (!currentUser) {

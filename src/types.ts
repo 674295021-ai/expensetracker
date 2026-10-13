@@ -95,6 +95,7 @@ export interface Trip {
   end_date: string;
   budget: number;
   status: 'active' | 'completed';
+  is_active_trip?: boolean;
   total_spent?: number;
   remaining_budget?: number;
   created_at?: string;

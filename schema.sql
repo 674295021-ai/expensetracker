@@ -95,6 +95,15 @@ CREATE TABLE IF NOT EXISTS line_link_tokens (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Table: user_active_trips (Active Trip Isolation Mode)
+CREATE TABLE IF NOT EXISTS user_active_trips (
+    user_id TEXT PRIMARY KEY,
+    trip_id TEXT NOT NULL,
+    activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (trip_id) REFERENCES trips(id) ON DELETE CASCADE
+);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_trips_user ON trips(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_trip_expenses_trip ON trip_expenses(trip_id, expense_date);
@@ -102,4 +111,5 @@ CREATE INDEX IF NOT EXISTS idx_trip_expenses_user ON trip_expenses(user_id, expe
 CREATE INDEX IF NOT EXISTS idx_investments_user ON investments(user_id, institution);
 CREATE INDEX IF NOT EXISTS idx_line_users_user ON line_users(user_id);
 CREATE INDEX IF NOT EXISTS idx_line_link_tokens_user ON line_link_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_active_trips_trip ON user_active_trips(trip_id);
 

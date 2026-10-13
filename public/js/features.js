@@ -40,12 +40,19 @@ const Features = {
     const spent = parseFloat(t.total_spent) || 0;
     const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
     const isOver = spent > budget && budget > 0;
-    const statusBadge = t.status === 'completed'
-      ? `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-100 text-emerald-700">✓ เสร็จสิ้น</span>`
-      : `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-100 text-indigo-700">✈ กำลังเดินทาง</span>`;
+    const isActive = Boolean(t.is_active_trip);
+
+    let statusBadge = '';
+    if (isActive) {
+      statusBadge = `<span class="px-2.5 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500 text-white shadow-xs animate-pulse flex items-center gap-1"><span>🚀</span><span>Active Trip</span></span>`;
+    } else if (t.status === 'completed') {
+      statusBadge = `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-slate-100 text-slate-600">✓ จบทริปแล้ว</span>`;
+    } else {
+      statusBadge = `<span class="px-2.5 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-50 text-indigo-700">✈️ วางแผนไว้</span>`;
+    }
 
     return `
-      <div onclick="Features.openTripDetailModal('${t.id}')" class="bg-white rounded-3xl p-5 border border-slate-100 shadow-soft hover:shadow-lg hover:border-indigo-200 transition cursor-pointer flex flex-col justify-between gap-4 group">
+      <div onclick="Features.openTripDetailModal('${t.id}')" class="bg-white rounded-3xl p-5 border ${isActive ? 'border-emerald-300 ring-2 ring-emerald-100' : 'border-slate-100'} shadow-soft hover:shadow-lg hover:border-indigo-200 transition cursor-pointer flex flex-col justify-between gap-4 group">
         <div class="space-y-3">
           <div class="flex items-start justify-between gap-2">
             <div>
@@ -68,7 +75,7 @@ const Features = {
                 <span class="text-slate-400">งบ ฿${Features._fmt(budget)}</span>
               </div>
               <div class="w-full bg-slate-200/60 rounded-full h-2 overflow-hidden">
-                <div class="${isOver ? 'bg-rose-500' : 'bg-indigo-500'} h-full rounded-full transition-all" style="width:${pct}%"></div>
+                <div class="${isOver ? 'bg-rose-500' : isActive ? 'bg-emerald-500' : 'bg-indigo-500'} h-full rounded-full transition-all" style="width:${pct}%"></div>
               </div>
               ${isOver ? `<p class="text-[11px] text-rose-600 mt-1.5 font-bold">⚠️ เกินงบ ฿${Features._fmt(spent - budget)}</p>` : `<p class="text-[10px] text-slate-400 mt-1">คงเหลือ ฿${Features._fmt(budget - spent)}</p>`}
             </div>
@@ -80,11 +87,20 @@ const Features = {
           `}
         </div>
 
-        <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
+        <div class="flex items-center gap-1.5 pt-3 border-t border-slate-100">
           <button type="button" onclick="event.stopPropagation(); Features.openTripDetailModal('${t.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1">
-            🔍 ดูรายละเอียดทริป
+            🔍 รายละเอียด
           </button>
-          <button type="button" onclick="event.stopPropagation(); Features.deleteTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition" title="ลบทริป">
+          ${isActive ? `
+            <button type="button" onclick="event.stopPropagation(); Features.deactivateTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition" title="ปิดโหมดทริป">
+              🏁 จบทริป
+            </button>
+          ` : `
+            <button type="button" onclick="event.stopPropagation(); Features.activateTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition" title="เปิดโหมด Active Trip แยกงบอัตโนมัติ">
+              🚀 เริ่มทริป
+            </button>
+          `}
+          <button type="button" onclick="event.stopPropagation(); Features.deleteTrip('${t.id}')" class="py-1.5 px-2 rounded-xl text-slate-400 hover:bg-rose-50 hover:text-rose-600 text-xs font-semibold transition" title="ลบทริป">
             ลบ
           </button>
         </div>
@@ -139,16 +155,31 @@ const Features = {
     if (subEl) subEl.textContent = `📍 ${trip.destination || 'ไม่ระบุจุดหมาย'} · 📅 ${trip.start_date} → ${trip.end_date}`;
 
     const statusBadgeEl = document.getElementById('trip-detail-status-badge');
+    const isActive = Boolean(trip.is_active_trip);
     if (statusBadgeEl) {
-      statusBadgeEl.className = trip.status === 'completed'
-        ? 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-100 text-emerald-700'
-        : 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-100 text-indigo-700';
-      statusBadgeEl.textContent = trip.status === 'completed' ? '✓ จบทริปแล้ว' : '✈ กำลังเดินทาง';
+      if (isActive) {
+        statusBadgeEl.className = 'px-2.5 py-0.5 text-[11px] font-bold rounded-full bg-emerald-500 text-white shadow-xs animate-pulse';
+        statusBadgeEl.textContent = '🚀 Active Trip (แยกงบเด็ดขาด)';
+      } else if (trip.status === 'completed') {
+        statusBadgeEl.className = 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-slate-100 text-slate-700';
+        statusBadgeEl.textContent = '✓ จบทริปแล้ว';
+      } else {
+        statusBadgeEl.className = 'px-2.5 py-0.5 text-[11px] font-semibold rounded-full bg-indigo-100 text-indigo-700';
+        statusBadgeEl.textContent = '✈️ แผนการเดินทาง';
+      }
     }
 
     const toggleBtn = document.getElementById('trip-toggle-status-btn');
     if (toggleBtn) {
-      toggleBtn.textContent = trip.status === 'completed' ? '🔄 เปลี่ยนเป็นกำลังเดินทาง' : '✓ สรุปปิดจบทริปนี้';
+      if (isActive) {
+        toggleBtn.textContent = '🏁 จบทริป (ปิดโหมด Active)';
+        toggleBtn.className = 'px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold transition border border-rose-200';
+        toggleBtn.onclick = () => Features.deactivateTrip(trip.id);
+      } else {
+        toggleBtn.textContent = '🚀 เริ่มเดินทาง (เปิด Active Trip)';
+        toggleBtn.className = 'px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition border border-emerald-200';
+        toggleBtn.onclick = () => Features.activateTrip(trip.id);
+      }
     }
 
     // Budget card
@@ -272,20 +303,40 @@ const Features = {
     }
   },
 
+  async activateTrip(tripId) {
+    try {
+      await API.request(`/api/trips/${tripId}/activate`, { method: 'POST' });
+      API.showToast('🚀 เปิดโหมด Active Trip สำเร็จ! สลิปโอนเงินหลังจากนี้จะแยกงบเข้าทริปนี้อัตโนมัติ 100%', 'success');
+      Features.loadTrips();
+      if (Features._currentTripId === tripId) {
+        Features.openTripDetailModal(tripId);
+      }
+    } catch (e) {
+      API.showToast(`เปิดโหมด Active Trip ไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
+  async deactivateTrip(tripId) {
+    if (!confirm('ยืนยันปิดโหมด Active Trip และจบทริปนี้? สลิปหลังจากนี้จะบันทึกลงบัญชีหลักตามปกติ')) return;
+    try {
+      await API.request(`/api/trips/${tripId}/deactivate`, { method: 'POST' });
+      API.showToast('🏁 ปิดโหมด Active Trip เรียบร้อยแล้ว กลับสู่โหมดบันทึกปกติ 🎉', 'success');
+      Features.loadTrips();
+      if (Features._currentTripId === tripId) {
+        Features.openTripDetailModal(tripId);
+      }
+    } catch (e) {
+      API.showToast(`ปิดโหมด Active Trip ไม่สำเร็จ: ${e.message}`, 'error');
+    }
+  },
+
   async toggleTripStatus() {
     if (!Features._currentTripData) return;
     const trip = Features._currentTripData.trip;
-    const newStatus = trip.status === 'completed' ? 'active' : 'completed';
-    try {
-      await API.request(`/api/trips/${trip.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      API.showToast(newStatus === 'completed' ? 'จบทริปเรียบร้อยแล้ว ✓' : 'เปิดทริปกำลังเดินทาง ✈️', 'success');
-      Features.openTripDetailModal(trip.id);
-      Features.loadTrips();
-    } catch (e) {
-      API.showToast(`เปลี่ยนสถานะทริปไม่สำเร็จ: ${e.message}`, 'error');
+    if (trip.is_active_trip) {
+      await Features.deactivateTrip(trip.id);
+    } else {
+      await Features.activateTrip(trip.id);
     }
   },
 
@@ -376,7 +427,7 @@ const Features = {
             <div class="flex items-center gap-3">
               <span class="font-mono font-bold text-xs text-rose-600">-฿${Features._fmt(amt)}</span>
               <button onclick="Features.linkTransactionToTrip('${tx.id}')" class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs transition">
-                + ผูกเข้าทริป
+                + ย้ายเข้าทริป
               </button>
             </div>
           </div>`;
@@ -395,11 +446,17 @@ const Features = {
       });
       const modal = document.getElementById('trip-link-modal');
       if (modal) modal.classList.add('hidden');
-      API.showToast('ผูกรายการเข้าทริปเรียบร้อยแล้ว! 🔗', 'success');
+      API.showToast('ย้ายรายการเข้าทริปและนำออกจากบัญชีหลักเรียบร้อยแล้ว 🔗', 'success');
       Features.openTripDetailModal(Features._currentTripId);
       Features.loadTrips();
+      if (typeof App.loadTransactions === 'function') {
+        App.loadTransactions();
+      }
+      if (typeof App.loadDashboard === 'function') {
+        App.loadDashboard();
+      }
     } catch (e) {
-      API.showToast(`ผูกรายการไม่สำเร็จ: ${e.message}`, 'error');
+      API.showToast(`ย้ายรายการไม่สำเร็จ: ${e.message}`, 'error');
     }
   },
 
@@ -799,5 +856,13 @@ App.openAddTripExpenseModal = function () {
 
 App.openLinkExpenseModal = function () {
   Features.openLinkExpenseModal();
+};
+
+App.activateTrip = function (id) {
+  Features.activateTrip(id);
+};
+
+App.deactivateTrip = function (id) {
+  Features.deactivateTrip(id);
 };
 

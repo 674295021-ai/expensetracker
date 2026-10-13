@@ -2,7 +2,7 @@
 
 export interface LineWebhookEvent {
   type: string;
-  mode: string;
+  mode?: string;
   timestamp: number;
   source: {
     type: string;
@@ -17,6 +17,66 @@ export interface LineWebhookEvent {
       type: string;
     };
   };
+  postback?: {
+    data: string;
+    params?: Record<string, string>;
+  };
+}
+
+export interface LineQuickReplyItem {
+  type: 'action';
+  action: {
+    type: 'message' | 'postback';
+    label: string;
+    text?: string;
+    data?: string;
+    displayText?: string;
+  };
+}
+
+export function createQuickReply(isActiveTrip: boolean = false): { items: LineQuickReplyItem[] } {
+  const items: LineQuickReplyItem[] = [];
+
+  if (isActiveTrip) {
+    items.push({
+      type: 'action',
+      action: {
+        type: 'message',
+        label: '🏁 จบทริป',
+        text: 'จบทริป',
+      },
+    });
+  } else {
+    items.push({
+      type: 'action',
+      action: {
+        type: 'message',
+        label: '🚀 เริ่มทริป',
+        text: 'เริ่มทริป',
+      },
+    });
+  }
+
+  items.push(
+    {
+      type: 'action',
+      action: {
+        type: 'message',
+        label: '📊 ดูพอร์ต',
+        text: 'พอร์ต',
+      },
+    },
+    {
+      type: 'action',
+      action: {
+        type: 'message',
+        label: '❓ เช็กสถานะ',
+        text: 'สถานะ',
+      },
+    }
+  );
+
+  return { items };
 }
 
 export async function verifyLineSignature(
