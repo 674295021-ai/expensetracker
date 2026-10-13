@@ -93,6 +93,12 @@ export async function handleLineRoutes(
     const events = payload.events || [];
     console.log(`[LINE Webhook] Successfully verified, events count: ${events.length}`);
 
+    // If events array is empty, this is a LINE webhook verification test from Developer Console
+    if (events.length === 0) {
+      console.log('[LINE Webhook] Received verification request from LINE Console (empty events). Returning 200 OK immediately.');
+      return new Response('OK', { status: 200 });
+    }
+
     for (const event of events) {
       if (event.type !== 'message' || !event.replyToken || !event.source?.userId) continue;
 
