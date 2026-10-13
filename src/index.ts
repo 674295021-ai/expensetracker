@@ -15,7 +15,7 @@ import { handleLineRoutes } from './routes/lineRoutes';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    console.log(">>> WORKER RECEIVED REQUEST:", request.url, request.method);
+    console.log(">>> [GLOBAL FETCH]:", request.method, request.url);
     const url = new URL(request.url);
 
     // 1. Handle CORS Preflight requests
