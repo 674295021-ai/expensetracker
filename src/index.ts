@@ -30,7 +30,7 @@ export default {
         url.pathname === '/webhook' ||
         url.pathname === '/line/webhook'
       ) {
-        return await handleLineRoutes(request, env, url, null);
+        return await handleLineRoutes(request, env, url, null, ctx);
       }
 
       if (url.pathname.startsWith('/api/')) {
@@ -53,7 +53,7 @@ export default {
           if ('errorResponse' in authResult) {
             return authResult.errorResponse;
           }
-          return await handleLineRoutes(request, env, url, authResult.user);
+          return await handleLineRoutes(request, env, url, authResult.user, ctx);
         }
 
         // Protected Transaction & Summary routes
