@@ -81,10 +81,10 @@ const Features = {
         </div>
 
         <div class="flex items-center gap-2 pt-3 border-t border-slate-100">
-          <button onclick="event.stopPropagation(); Features.openTripDetailModal('${t.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1">
+          <button type="button" onclick="event.stopPropagation(); Features.openTripDetailModal('${t.id}')" class="flex-1 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center justify-center gap-1">
             🔍 ดูรายละเอียดทริป
           </button>
-          <button onclick="event.stopPropagation(); Features.deleteTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition" title="ลบทริป">
+          <button type="button" onclick="event.stopPropagation(); Features.deleteTrip('${t.id}')" class="py-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-semibold transition" title="ลบทริป">
             ลบ
           </button>
         </div>
@@ -94,10 +94,17 @@ const Features = {
   async openTripDetailModal(tripId) {
     Features._currentTripId = tripId;
     const modal = document.getElementById('trip-detail-modal');
-    if (!modal) return;
+    if (!modal) {
+      console.error('[Features] trip-detail-modal element not found in DOM');
+      return;
+    }
 
+    // Force show modal immediately with flex display
     modal.classList.remove('hidden');
-    document.getElementById('trip-detail-name').textContent = 'กำลังโหลดข้อมูลทริป...';
+    modal.style.display = 'flex';
+
+    const nameEl = document.getElementById('trip-detail-name');
+    if (nameEl) nameEl.textContent = 'กำลังโหลดข้อมูลทริป...';
 
     try {
       const res = await API.request(`/api/trips/${tripId}`);
@@ -107,13 +114,16 @@ const Features = {
       Features._currentTripData = data;
       Features.renderTripDetail(data);
     } catch (e) {
+      console.error('[Features] openTripDetailModal error:', e);
       API.showToast(`โหลดรายละเอียดทริปไม่สำเร็จ: ${e.message}`, 'error');
     }
   },
 
   renderTripDetail(data) {
-    const trip = data.trip;
-    const expenses = data.expenses || [];
+    if (!data) return;
+    const trip = data.trip || data;
+    if (!trip) return;
+    const expenses = Array.isArray(data.expenses) ? data.expenses : [];
     const budget = parseFloat(trip.budget) || 0;
     const spent = parseFloat(trip.total_spent) || 0;
     const remaining = budget - spent;
@@ -290,6 +300,7 @@ const Features = {
     const n = document.getElementById('trip-exp-note');
     if (n) n.value = '';
     modal.classList.remove('hidden');
+    modal.style.display = 'flex';
   },
 
   async handleAddTripExpense() {
@@ -338,6 +349,7 @@ const Features = {
     if (!modal || !listEl) return;
 
     modal.classList.remove('hidden');
+    modal.style.display = 'flex';
     listEl.innerHTML = `<div class="py-8 text-center text-slate-400 text-xs">กำลังโหลดรายการรายจ่ายของคุณ...</div>`;
 
     try {
@@ -776,3 +788,16 @@ App.generateLineCode = function () {
 App.unlinkLine = function () {
   Features.unlinkLine();
 };
+
+App.openTripDetailModal = function (id) {
+  Features.openTripDetailModal(id);
+};
+
+App.openAddTripExpenseModal = function () {
+  Features.openAddTripExpenseModal();
+};
+
+App.openLinkExpenseModal = function () {
+  Features.openLinkExpenseModal();
+};
+

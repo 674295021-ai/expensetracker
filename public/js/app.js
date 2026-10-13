@@ -480,7 +480,10 @@ const App = {
 
   closeModals() {
     this.editingId = null;
-    document.querySelectorAll('.modal-window').forEach((m) => m.classList.add('hidden'));
+    document.querySelectorAll('.modal-window').forEach((m) => {
+      m.classList.add('hidden');
+      m.style.display = '';
+    });
   },
 
   async handleTransactionSubmit(e) {
