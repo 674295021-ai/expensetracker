@@ -15,7 +15,7 @@ import { handleLineRoutes } from './routes/lineRoutes';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    console.log(">>> [GLOBAL FETCH]:", request.method, request.url);
+    console.log(">>> ANY REQUEST RECEIVED:", request.method, request.url);
     const url = new URL(request.url);
 
     // 1. Handle CORS Preflight requests
@@ -25,8 +25,12 @@ export default {
 
     try {
       // 2. Route API Requests
-      // Support both /api/line/webhook and direct /webhook or /line/webhook
+      // Instant 200 OK for /api/line/webhook, /webhook, or /line/webhook
       if (url.pathname === '/api/line/webhook' || url.pathname === '/webhook' || url.pathname === '/line/webhook') {
+        // If GET, return 200 OK immediately
+        if (request.method === 'GET') {
+          return new Response('OK', { status: 200 });
+        }
         return await handleLineRoutes(request, env, url, null);
       }
 

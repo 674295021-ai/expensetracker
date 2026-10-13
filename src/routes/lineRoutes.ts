@@ -78,28 +78,28 @@ export async function handleLineRoutes(
 
     console.log(`[LINE Webhook] Received POST event, body length: ${rawBody.length}, hasSignature: ${!!signature}`);
 
-    const isValid = await verifyLineSignature(rawBody, signature, secret);
-    if (!isValid) {
-      console.error(`Signature verification failed: receivedSignature=${signature}, secretConfigured=${!!secret}`);
-      return new Response('Invalid signature', { status: 401 });
-    }
-
-    let payload: { events?: LineWebhookEvent[] };
+    // If body contains empty events or no events, return 200 OK immediately for verification probes
+    let payload: { events?: LineWebhookEvent[] } = {};
     try {
       payload = JSON.parse(rawBody);
     } catch (parseErr) {
-      console.error('[LINE Webhook] JSON parse error:', parseErr);
-      return new Response('Bad request', { status: 200 });
+      console.warn('[LINE Webhook] Non-JSON or empty payload received. Returning 200 OK for verification.');
+      return new Response('OK', { status: 200 });
     }
 
     const events = payload.events || [];
     console.log("== New Webhook Event ==", JSON.stringify(events));
-    console.log(`[LINE Webhook] Successfully verified, events count: ${events.length}`);
 
     // If events array is empty, this is a LINE webhook verification test from Developer Console
     if (events.length === 0) {
       console.log('[LINE Webhook] Received verification request from LINE Console (empty events). Returning 200 OK immediately.');
       return new Response('OK', { status: 200 });
+    }
+
+    const isValid = await verifyLineSignature(rawBody, signature, secret);
+    if (!isValid) {
+      console.error(`Signature verification failed: receivedSignature=${signature}, secretConfigured=${!!secret}`);
+      return new Response('Invalid signature', { status: 401 });
     }
 
     for (const event of events) {
