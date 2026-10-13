@@ -91,6 +91,7 @@ export async function handleLineRoutes(
     }
 
     const events = payload.events || [];
+    console.log("== New Webhook Event ==", JSON.stringify(events));
     console.log(`[LINE Webhook] Successfully verified, events count: ${events.length}`);
 
     // If events array is empty, this is a LINE webhook verification test from Developer Console
@@ -369,7 +370,7 @@ export async function handleLineRoutes(
             [
               {
                 type: 'text',
-                text: `❌ เกิดข้อผิดพลาดในการประมวลผล: ${errMsg}\n\nกรุณาลองใหม่อีกครั้ง หรือบันทึกรายการผ่านหน้าเว็บครับ`,
+                text: '❌ เกิดข้อผิดพลาด: ' + errMsg,
               },
             ],
             lineToken
