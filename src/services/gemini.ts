@@ -23,7 +23,17 @@ export interface SlipOCRResult {
   currency?: string;
 }
 
-const DEFAULT_CANDIDATE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash'];
+const PREFERRED_WORKING_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.1-flash-lite-preview',
+  'gemini-3.7-flash',
+  'gemini-1.5-flash',
+  'gemini-2.0-flash',
+];
+
+const DEFAULT_CANDIDATE_MODELS = PREFERRED_WORKING_MODELS;
 
 /**
  * Auto-detect available Gemini models supporting generateContent from Google API.
@@ -42,18 +52,28 @@ async function getAvailableGeminiModels(apiKey: string): Promise<string[]> {
       };
 
       if (data.models && Array.isArray(data.models)) {
-        // Filter models that support generateContent and contain 'flash' or 'pro'
+        // Filter models that support generateContent, contain 'flash' or 'pro', and exclude TTS/deprecated models
         const matched = data.models
           .filter((m) => {
             const supports = (m.supportedGenerationMethods || []).includes('generateContent');
             const cleanName = (m.name || '').replace(/^models\//, '').toLowerCase();
-            return supports && (cleanName.includes('flash') || cleanName.includes('pro'));
+            return (
+              supports &&
+              (cleanName.includes('flash') || cleanName.includes('pro')) &&
+              !cleanName.includes('tts') &&
+              !cleanName.includes('transcribe') &&
+              !cleanName.startsWith('gemini-2.5-')
+            );
           })
           .map((m) => (m.name || '').replace(/^models\//, ''));
 
         if (matched.length > 0) {
-          // Merge matched models with default candidates (deduped, matched models first)
-          return Array.from(new Set([...matched, ...DEFAULT_CANDIDATE_MODELS]));
+          // Prioritize known stable models first
+          const sorted = [
+            ...PREFERRED_WORKING_MODELS.filter((p) => matched.includes(p)),
+            ...matched.filter((m) => !PREFERRED_WORKING_MODELS.includes(m)),
+          ];
+          return Array.from(new Set([...sorted, ...DEFAULT_CANDIDATE_MODELS]));
         }
       }
     }
